@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import './App.css';
+import SoundMixer from './components/SoundMixer';
 
 // Các giai đoạn dùng ảnh tự cung cấp trong thư mục public/
 const TREE_STAGES = [
@@ -31,6 +32,8 @@ function App() {
           <p className="quote">{gardenData?.dailyQuote}</p>
           <span className="server-badge">{gardenData?.serverStatus || 'Connecting to cloud server...'}</span>
         </header>
+
+        <SoundMixer />
 
         {/* Cây chính tương tác */}
         <section className="clean-card plant-care-zone">
