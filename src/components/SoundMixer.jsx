@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './SoundMixer.css';
+
+const STORAGE_KEY = 'nature-mixer-settings-v1';
 
 const INITIAL_TRACKS = [
   { id: 'music', name: 'Music', icon: '🎵', volume: 50, muted: false },
@@ -7,8 +9,45 @@ const INITIAL_TRACKS = [
   { id: 'birds', name: 'Birds', icon: '🐦', volume: 20, muted: false },
 ];
 
+function loadTracks() {
+  try {
+    const savedTracks = JSON.parse(localStorage.getItem(STORAGE_KEY));
+
+    if (!Array.isArray(savedTracks)) return INITIAL_TRACKS;
+
+    return INITIAL_TRACKS.map((track) => {
+      const savedTrack = savedTracks.find((item) => item?.id === track.id);
+
+      return {
+        ...track,
+        volume:
+          Number.isInteger(savedTrack?.volume) &&
+          savedTrack.volume >= 0 &&
+          savedTrack.volume <= 100
+            ? savedTrack.volume
+            : track.volume,
+        muted:
+          typeof savedTrack?.muted === 'boolean'
+            ? savedTrack.muted
+            : track.muted,
+      };
+    });
+  } catch {
+    return INITIAL_TRACKS;
+  }
+}
+
 export default function SoundMixer() {
-  const [tracks, setTracks] = useState(INITIAL_TRACKS);
+  const [tracks, setTracks] = useState(loadTracks);
+
+  useEffect(() => {
+    try {
+      const settings = tracks.map(({ id, volume, muted }) => ({ id, volume, muted }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    } catch (error) {
+      console.warn('Unable to save mixer settings:', error);
+    }
+  }, [tracks]);
 
   function updateTrack(id, changes) {
     setTracks((previousTracks) =>
