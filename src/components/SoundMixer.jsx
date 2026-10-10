@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './SoundMixer.css';
 
 const STORAGE_KEY = 'nature-mixer-settings-v1';
 
 const INITIAL_TRACKS = [
-  { id: 'music', name: 'Music', icon: '🎵', volume: 50, muted: false },
-  { id: 'rain', name: 'Rain', icon: '🌧️', volume: 30, muted: false },
-  { id: 'birds', name: 'Birds', icon: '🐦', volume: 20, muted: false },
+  { id: 'music', name: 'Music', icon: '🎵', src: '/audio/music.mp3', volume: 50, muted: false },
+  { id: 'rain', name: 'Rain', icon: '🌧️', src: '/audio/rain.mp3', volume: 30, muted: false },
+  { id: 'birds', name: 'Birds', icon: '🐦', src: '/audio/birds.mp3', volume: 20, muted: false },
 ];
 
 function loadTracks() {
@@ -39,6 +39,12 @@ function loadTracks() {
 
 export default function SoundMixer() {
   const [tracks, setTracks] = useState(loadTracks);
+  const [playbackState, setPlaybackState] = useState('ready');
+  const [playbackError, setPlaybackError] = useState('');
+  const audioRefs = useRef({});
+  const playbackRequested = useRef(false);
+  const playbackRequestId = useRef(0);
+  const trackPlaybackStates = useRef({});
 
   useEffect(() => {
     try {
@@ -48,6 +54,96 @@ export default function SoundMixer() {
       console.warn('Unable to save mixer settings:', error);
     }
   }, [tracks]);
+
+  useEffect(() => {
+    tracks.forEach((track) => {
+      const audio = audioRefs.current[track.id];
+      if (audio) {
+        audio.volume = track.volume / 100;
+        audio.muted = track.muted;
+      }
+    });
+  }, [tracks]);
+
+  useEffect(() => {
+    const audioElements = Object.values(audioRefs.current);
+
+    return () => {
+      playbackRequested.current = false;
+      playbackRequestId.current += 1;
+      audioElements.forEach((audio) => audio?.pause());
+    };
+  }, []);
+
+  function pausePlayback(nextState = 'paused') {
+    playbackRequested.current = false;
+    playbackRequestId.current += 1;
+    Object.values(audioRefs.current).forEach((audio) => audio?.pause());
+    setPlaybackState(nextState);
+  }
+
+  function failPlayback(message) {
+    pausePlayback('error');
+    setPlaybackError(message);
+  }
+
+  function markTrackPlayback(id, state) {
+    if (!playbackRequested.current) return;
+
+    trackPlaybackStates.current[id] = state;
+    const states = INITIAL_TRACKS.map((track) => trackPlaybackStates.current[track.id]);
+
+    if (states.every((value) => value === 'playing')) {
+      setPlaybackState('playing');
+    } else if (states.includes('buffering')) {
+      setPlaybackState('buffering');
+    } else {
+      setPlaybackState('loading');
+    }
+  }
+
+  async function togglePlayback() {
+    if (playbackRequested.current) {
+      pausePlayback();
+      return;
+    }
+
+    playbackRequested.current = true;
+    const requestId = ++playbackRequestId.current;
+    trackPlaybackStates.current = Object.fromEntries(
+      tracks.map((track) => [track.id, 'loading'])
+    );
+    setPlaybackError('');
+    setPlaybackState('loading');
+
+    try {
+      await Promise.all(tracks.map((track) => {
+        const audio = audioRefs.current[track.id];
+        if (!audio) throw new Error(`${track.name} audio is unavailable.`);
+
+        if (audio.error) audio.load();
+        audio.volume = track.volume / 100;
+        audio.muted = track.muted;
+
+        return audio.play().catch((error) => {
+          const message = error.name === 'NotAllowedError'
+            ? 'Playback was blocked. Press Play to try again.'
+            : `Unable to play ${track.name}. Check ${track.src} and try again.`;
+          throw new Error(message, { cause: error });
+        });
+      }));
+
+      if (requestId !== playbackRequestId.current || !playbackRequested.current) return;
+
+      tracks.forEach((track) => {
+        const audio = audioRefs.current[track.id];
+        markTrackPlayback(track.id, audio.readyState >= 3 ? 'playing' : 'buffering');
+      });
+    } catch (error) {
+      if (requestId !== playbackRequestId.current || !playbackRequested.current) return;
+      failPlayback(error.message);
+    }
+  }
 
   function updateTrack(id, changes) {
     setTracks((previousTracks) =>
@@ -65,6 +161,25 @@ export default function SoundMixer() {
     <section className="clean-card sound-mixer" aria-labelledby="mixer-title">
       <h2 id="mixer-title">Sound Mixer</h2>
       <p className="mixer-description">Build your own peaceful soundscape.</p>
+
+      {tracks.map((track) => (
+        <audio
+          key={track.id}
+          ref={(element) => { audioRefs.current[track.id] = element; }}
+          src={track.src}
+          loop
+          preload="none"
+          muted={track.muted}
+          onPlaying={() => markTrackPlayback(track.id, 'playing')}
+          onWaiting={() => markTrackPlayback(track.id, 'buffering')}
+          onPause={(event) => {
+            if (playbackRequested.current && event.currentTarget.paused) {
+              failPlayback('Playback was interrupted. Press Play to resume.');
+            }
+          }}
+          onError={() => failPlayback(`Unable to load ${track.name}. Check ${track.src} and try again.`)}
+        />
+      ))}
 
       <div className="mixer-tracks">
         {tracks.map((track) => (
@@ -104,10 +219,28 @@ export default function SoundMixer() {
       </div>
 
       <div className="mixer-actions">
+        <button
+          type="button"
+          className="mixer-play"
+          onClick={togglePlayback}
+        >
+          {['loading', 'playing', 'buffering'].includes(playbackState) ? 'Pause' : 'Play'}
+        </button>
         <button type="button" className="mixer-reset" onClick={resetTracks}>
           Reset mixer
         </button>
       </div>
+
+      <p className="mixer-status" role="status" aria-live="polite">
+        {{
+          ready: 'Ready to play.',
+          loading: 'Starting audio...',
+          playing: 'Playing your mix.',
+          buffering: 'Buffering audio...',
+          paused: 'Playback paused.',
+          error: playbackError,
+        }[playbackState]}
+      </p>
     </section>
   );
 }

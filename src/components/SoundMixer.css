@@ -54,7 +54,8 @@
 }
 
 .mixer-mute,
-.mixer-reset {
+.mixer-reset,
+.mixer-play {
   padding: 8px;
   border: 1px solid rgba(167, 243, 208, 0.5);
   border-radius: 10px;
@@ -71,16 +72,33 @@
 
 .mixer-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 12px;
   margin-top: 24px;
 }
 
-.mixer-reset {
+.mixer-reset,
+.mixer-play {
   padding: 10px 16px;
+}
+
+.mixer-play {
+  min-width: 90px;
+  background: rgba(16, 185, 129, 0.45);
+  font-weight: 700;
+}
+
+.mixer-status {
+  margin: 16px 0 0;
+  color: #d1fae5;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .mixer-mute:focus-visible,
 .mixer-reset:focus-visible,
+.mixer-play:focus-visible,
 .mixer-track input:focus-visible {
   outline: 2px solid #6ee7b7;
   outline-offset: 4px;
