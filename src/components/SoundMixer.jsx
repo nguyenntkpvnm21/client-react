@@ -57,6 +57,10 @@ export default function SoundMixer() {
     );
   }
 
+  function resetTracks() {
+    setTracks(INITIAL_TRACKS.map((track) => ({ ...track })));
+  }
+
   return (
     <section className="clean-card sound-mixer" aria-labelledby="mixer-title">
       <h2 id="mixer-title">Sound Mixer</h2>
@@ -97,6 +101,12 @@ export default function SoundMixer() {
             </button>
           </div>
         ))}
+      </div>
+
+      <div className="mixer-actions">
+        <button type="button" className="mixer-reset" onClick={resetTracks}>
+          Reset mixer
+        </button>
       </div>
     </section>
   );
