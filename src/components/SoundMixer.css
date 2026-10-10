@@ -1,0 +1,86 @@
+.sound-mixer {
+  padding: 24px;
+  margin-bottom: 24px;
+  color: #f1f5f9;
+  backdrop-filter: blur(10px);
+}
+
+.sound-mixer h2 {
+  margin: 0 0 8px;
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.mixer-description {
+  margin: 0 0 22px;
+  color: #d1fae5;
+  font-size: 14px;
+}
+
+.mixer-tracks {
+  display: grid;
+  gap: 18px;
+}
+
+.mixer-track {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 55px 80px;
+  align-items: center;
+  gap: 12px;
+}
+
+.mixer-track label {
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.mixer-track input {
+  width: 100%;
+  margin: 0;
+  accent-color: #6ee7b7;
+  cursor: pointer;
+}
+
+.mixer-track input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mixer-volume {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mixer-mute {
+  padding: 8px;
+  border: 1px solid rgba(167, 243, 208, 0.5);
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mixer-mute[aria-pressed="true"] {
+  background: rgba(2, 136, 209, 0.5);
+}
+
+.mixer-mute:focus-visible,
+.mixer-track input:focus-visible {
+  outline: 2px solid #6ee7b7;
+  outline-offset: 4px;
+}
+
+@media (max-width: 480px) {
+  .mixer-track {
+    grid-template-columns: minmax(0, 1fr) 80px;
+  }
+
+  .mixer-track label { grid-area: 1 / 1; }
+  .mixer-mute { grid-area: 1 / 2; }
+  .mixer-track input { grid-area: 2 / 1; }
+  .mixer-volume { grid-area: 2 / 2; }
+}
