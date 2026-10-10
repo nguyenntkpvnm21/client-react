@@ -4,211 +4,31 @@
 
 body {
   margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-  
-  /* Ảnh nền sắc nét toàn màn hình */
   background: url('/my-background.gif') no-repeat center center fixed;
   background-size: cover;
-  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.garden-overlay {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
 }
 
 .garden-app {
+  width: 100%;
   max-width: 720px;
-  margin: 0 auto;
+  text-align: center;
 }
 
-/* THẺ TRONG SUỐT NHÌN XUYÊN BACKGROUND */
 .clean-card {
-  background: rgba(0, 0, 0, 0.35); /* Độ trong suốt cho phép thấy rõ ảnh nền */
+  background: rgba(0, 0, 0, 0.35);
   border-radius: 20px;
-  border: 1.5px solid rgba(255, 255, 255, 0.35); /* Viền sáng tạo cảm giác nổi */
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
-/* Header */
-.garden-header {
-  text-align: center;
-  padding: 24px;
-  margin-bottom: 22px;
-}
-
-.garden-header h1 {
-  margin: 6px 0;
-  font-size: 28px;
-  font-weight: 800;
-  color: #ffffff;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85); /* Đổ bóng sắc nét */
-}
-
-.quote {
-  font-style: italic;
-  color: #e0f2fe;
-  font-size: 15px;
-  font-weight: 600;
-  margin: 6px 0 14px;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
-}
-
-.server-badge {
-  display: inline-block;
-  background: rgba(46, 125, 50, 0.5);
-  color: #a7f3d0;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 6px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(167, 243, 208, 0.5);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
-}
-
-/* Khu vực nuôi cây tương tác */
-.plant-care-zone {
-  text-align: center;
-  padding: 24px;
-  margin-bottom: 24px;
-}
-
-.plant-care-zone h2 {
-  margin-top: 0;
-  color: #ffffff;
-  font-size: 22px;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
-}
-
-/* Vòng tròn đặt cây trong suốt */
-.tree-avatar-box {
-  width: 140px;
-  height: 140px;
-  margin: 15px auto;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px dashed rgba(255, 255, 255, 0.6);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-}
-
-/* Khóa chặt kích thước ảnh cây */
-.tree-avatar {
-  width: 95px !important;
-  height: 95px !important;
-  max-width: 95px !important;
-  max-height: 95px !important;
-  object-fit: contain;
-  display: block;
-}
-
-.stage-name {
-  font-size: 22px;
-  font-weight: 800;
-  color: #6ee7b7; /* Xanh ngọc nổi bật */
-  margin: 10px 0 4px;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
-}
-
-.water-stats {
-  font-size: 15px;
-  font-weight: 700;
-  color: #93c5fd;
-  margin-bottom: 18px;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
-}
-
-.action-btns {
-  display: flex;
-  gap: 14px;
-  justify-content: center;
-}
-
-.water-btn {
-  padding: 12px 28px;
-  background: #0288d1;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 25px;
-  font-size: 15px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(2, 136, 209, 0.5);
-  transition: transform 0.1s;
-}
-
-.water-btn:active {
-  transform: scale(0.96);
-}
-
-.reset-btn {
-  padding: 12px 20px;
-  background: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 25px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
-}
-
-/* Danh sách các bạn cây cỏ */
-.section-title {
-  color: #ffffff;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
-  font-size: 22px;
-  font-weight: 800;
-  text-align: center;
-  margin-bottom: 18px;
-}
-
-.plant-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 14px;
-}
-
-.plant-card {
-  padding: 18px 12px;
-  text-align: center;
-}
-
-/* Khóa chặt kích thước ảnh thẻ bạn bè */
-.card-plant-img {
-  width: 65px !important;
-  height: 65px !important;
-  max-width: 65px !important;
-  max-height: 65px !important;
-  object-fit: contain;
-  margin: 0 auto 10px auto;
-  display: block;
-}
-
-.plant-card h4 {
-  margin: 0 0 6px 0;
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 700;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
-}
-
-.plant-role {
-  display: inline-block;
-  font-size: 11px;
-  background: rgba(16, 185, 129, 0.35);
-  color: #a7f3d0;
-  padding: 3px 8px;
-  border-radius: 10px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  border: 1px solid rgba(167, 243, 208, 0.4);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-}
-
-.plant-card p {
-  font-size: 12px;
-  color: #f1f5f9;
-  margin: 0;
-  line-height: 1.4;
-  font-weight: 500;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+.garden-app > .sound-mixer {
+  margin-bottom: 0;
 }
