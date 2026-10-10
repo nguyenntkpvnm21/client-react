@@ -9,6 +9,12 @@ const INITIAL_TRACKS = [
   { id: 'birds', name: 'Birds', icon: '🐦', src: '/audio/birds.mp3', volume: 20, muted: false },
 ];
 
+const MIX_PRESETS = [
+  { id: 'balanced', name: 'Balanced', volumes: { music: 50, rain: 30, birds: 20 } },
+  { id: 'rainy-focus', name: 'Rainy Focus', volumes: { music: 30, rain: 60, birds: 0 } },
+  { id: 'birdsong', name: 'Birdsong', volumes: { music: 25, rain: 0, birds: 60 } },
+];
+
 function loadTracks() {
   try {
     const savedTracks = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -157,6 +163,14 @@ export default function SoundMixer() {
     setTracks(INITIAL_TRACKS.map((track) => ({ ...track })));
   }
 
+  function applyPreset(preset) {
+    setTracks((previousTracks) => previousTracks.map((track) => ({
+      ...track,
+      volume: preset.volumes[track.id],
+      muted: preset.volumes[track.id] === 0,
+    })));
+  }
+
   return (
     <section className="clean-card sound-mixer" aria-labelledby="mixer-title">
       <h2 id="mixer-title">Sound Mixer</h2>
@@ -180,6 +194,26 @@ export default function SoundMixer() {
           onError={() => failPlayback(`Unable to load ${track.name}. Check ${track.src} and try again.`)}
         />
       ))}
+
+      <fieldset className="mixer-presets">
+        <legend>Mix presets</legend>
+        <div className="mixer-preset-options">
+          {MIX_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className="mixer-preset"
+              aria-pressed={tracks.every((track) =>
+                track.volume === preset.volumes[track.id] &&
+                track.muted === (preset.volumes[track.id] === 0)
+              )}
+              onClick={() => applyPreset(preset)}
+            >
+              {preset.name}
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
       <div className="mixer-tracks">
         {tracks.map((track) => (
