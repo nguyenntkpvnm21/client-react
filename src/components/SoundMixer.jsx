@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import './SoundMixer.css';
+import Icon from './Icon';
 
 const STORAGE_KEY = 'nature-mixer-settings-v1';
 
 const INITIAL_TRACKS = [
-  { id: 'music', name: 'Music', icon: '🎵', src: '/audio/music.mp3', volume: 50, muted: false },
-  { id: 'rain', name: 'Rain', icon: '🌧️', src: '/audio/rain.mp3', volume: 30, muted: false },
-  { id: 'birds', name: 'Birds', icon: '🐦', src: '/audio/birds.mp3', volume: 20, muted: false },
+  { id: 'music', name: 'Music', icon: 'music', src: '/audio/music.mp3', volume: 50, muted: false },
+  { id: 'rain', name: 'Rain', icon: 'rain', src: '/audio/rain.mp3', volume: 30, muted: false },
+  { id: 'birds', name: 'Birds', icon: 'birds', src: '/audio/birds.mp3', volume: 20, muted: false },
 ];
 
 const MIX_PRESETS = [
@@ -172,9 +173,12 @@ export default function SoundMixer() {
   }
 
   return (
-    <section className="clean-card sound-mixer" aria-labelledby="mixer-title">
-      <h2 id="mixer-title">Sound Mixer</h2>
-      <p className="mixer-description">Build your own peaceful soundscape.</p>
+    <section className="panel sound-mixer" aria-labelledby="mixer-title">
+      <div className="panel-heading">
+        <div><p className="eyebrow">YOUR BACKGROUND, YOUR WAY</p><h2 id="mixer-title">Sound mixer</h2></div>
+        <span className="icon-tile"><Icon name="headphones" /></span>
+      </div>
+      <p className="mixer-description">A soundscape that feels like you.</p>
 
       {tracks.map((track) => (
         <audio
@@ -196,7 +200,7 @@ export default function SoundMixer() {
       ))}
 
       <fieldset className="mixer-presets">
-        <legend>Mix presets</legend>
+        <legend>Choose a mood</legend>
         <div className="mixer-preset-options">
           {MIX_PRESETS.map((preset) => (
             <button
@@ -218,10 +222,25 @@ export default function SoundMixer() {
       <div className="mixer-tracks">
         {tracks.map((track) => (
           <div className="mixer-track" key={track.id}>
-            <label htmlFor={`volume-${track.id}`}>
-              <span aria-hidden="true">{track.icon}</span> {track.name}
+            <label htmlFor={`volume-${track.id}`} className="mixer-track-label">
+              <span className={`track-icon ${track.id}`}><Icon name={track.icon} size={20} /></span>
+              <span><strong>{track.name}</strong><span>{{
+                music: 'Background music', rain: 'Rain ambience', birds: 'Bird ambience',
+              }[track.id]}</span></span>
             </label>
-
+            <output htmlFor={`volume-${track.id}`} className="mixer-volume">
+              {track.muted ? 'Muted' : `${track.volume}%`}
+            </output>
+            <button
+              type="button"
+              className="mixer-mute"
+              aria-label={`${track.muted ? 'Unmute' : 'Mute'} ${track.name}`}
+              title={`${track.muted ? 'Unmute' : 'Mute'} ${track.name}`}
+              aria-pressed={track.muted}
+              onClick={() => updateTrack(track.id, { muted: !track.muted })}
+            >
+              <Icon name={track.muted ? 'muted' : 'volume'} size={17} />
+            </button>
             <input
               id={`volume-${track.id}`}
               type="range"
@@ -230,51 +249,37 @@ export default function SoundMixer() {
               step="1"
               value={track.volume}
               disabled={track.muted}
+              style={{ '--volume-level': `${track.volume}%` }}
               onChange={(event) =>
                 updateTrack(track.id, { volume: Number(event.target.value) })
               }
             />
-
-            <output htmlFor={`volume-${track.id}`} className="mixer-volume">
-              {track.muted ? 'Muted' : `${track.volume}%`}
-            </output>
-
-            <button
-              type="button"
-              className="mixer-mute"
-              aria-label={`Mute ${track.name}`}
-              aria-pressed={track.muted}
-              onClick={() => updateTrack(track.id, { muted: !track.muted })}
-            >
-              {track.muted ? 'Unmute' : 'Mute'}
-            </button>
           </div>
         ))}
       </div>
 
       <div className="mixer-actions">
-        <button
-          type="button"
-          className="mixer-play"
-          onClick={togglePlayback}
-        >
-          {['loading', 'playing', 'buffering'].includes(playbackState) ? 'Pause' : 'Play'}
+        <button type="button" className="button button-primary mixer-play" onClick={togglePlayback}>
+          <Icon name={['loading', 'playing', 'buffering'].includes(playbackState) ? 'pause' : 'play'} size={17} />
+          {['loading', 'playing', 'buffering'].includes(playbackState) ? 'Pause mix' : 'Play mix'}
         </button>
-        <button type="button" className="mixer-reset" onClick={resetTracks}>
-          Reset mixer
+        <button type="button" className="button mixer-reset" onClick={resetTracks}>
+          <Icon name="reset" size={16} />Reset mixer
         </button>
       </div>
 
-      <p className="mixer-status" role="status" aria-live="polite">
+      <p className={`mixer-status ${playbackState}`} role="status" aria-live="polite">
+        <span className="mixer-status-dot" />
         {{
-          ready: 'Ready to play.',
-          loading: 'Starting audio...',
-          playing: 'Playing your mix.',
+          ready: 'Ready to set the mood.',
+          loading: 'Starting your soundscape...',
+          playing: 'Your soundscape is playing.',
           buffering: 'Buffering audio...',
-          paused: 'Playback paused.',
+          paused: 'Your soundscape is paused.',
           error: playbackError,
         }[playbackState]}
       </p>
+      <div className="mixer-tip"><Icon name="headphones" size={17} /><span>A good pair of headphones makes a little world of difference.</span></div>
     </section>
   );
 }
