@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { MAX_TRACKS, SOUNDS, createTrack } from '../data/sounds.js';
 import { AudioEngine } from '../lib/audioEngine.js';
-import { deleteAudio, readAudio, saveAudio } from '../lib/audioStorage.js';
-import { STUDIO_STORAGE_KEY, defaultMix, loadMix, serializeMix, validateAudioFile } from '../lib/studioState.js';
+import { deleteUnusedAudio, readAudio, readSavedMix, readSavedMixes, saveAudio, writeSavedMix } from '../lib/audioStorage.js';
+import { STUDIO_STORAGE_KEY, defaultMix, loadMix, serializeMix, validateAudioFile, validateMix } from '../lib/studioState.js';
+import { sameMix } from '../lib/savedMixes.js';
 
 function initialMix() {
   try { return loadMix(localStorage); } catch { return defaultMix(); }
+}
+
+function initialProjectId() {
+  try { return JSON.parse(localStorage.getItem(STUDIO_STORAGE_KEY))?.projectId || null; } catch { return null; }
 }
 
 function withSources(tracks) {
@@ -22,11 +27,17 @@ export default function useStudio() {
   const [booting, setBooting] = useState(true);
   const [importing, setImporting] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
+  const [savedMixes, setSavedMixes] = useState([]);
+  const [activeProjectId, setActiveProjectId] = useState(null);
+  const [projectBusy, setProjectBusy] = useState(false);
+  const [projectsBlocked, setProjectsBlocked] = useState(false);
+  const [savedNotice, setSavedNotice] = useState('');
   const engine = useRef(null);
   const files = useRef({});
   const mixRef = useRef(null);
   const alive = useRef(false);
   const importLock = useRef(false);
+  const projectLock = useRef(false);
   const statusRef = useRef('ready');
 
   useEffect(() => {
@@ -40,7 +51,10 @@ export default function useStudio() {
     const restored = initialMix();
     void (async () => {
       const custom = restored.tracks.filter((track) => !track.catalogId);
-      const results = await Promise.allSettled(custom.map((track) => readAudio(track.id)));
+      const [results, library] = await Promise.all([
+        Promise.allSettled(custom.map((track) => readAudio(track.id))),
+        readSavedMixes().then((projects) => ({ projects }), (error) => ({ error })),
+      ]);
       if (canceled) return;
       const found = {};
       let missing = false;
@@ -53,8 +67,16 @@ export default function useStudio() {
       setMix({ ...restored, tracks: restored.tracks.filter((track) => track.catalogId || found[track.id]) });
       setStorageBlocked(blocked);
       if (missing) setStorageNotice(blocked
-        ? 'Saved audio could not be opened. Your saved project has been preserved; try reloading with browser storage enabled.'
+        ? 'Saved audio could not be opened. Your saved workspace has been preserved; try reloading with browser storage enabled.'
         : 'Some saved audio is missing. Import those recordings again.');
+      if (library.error) {
+        setProjectsBlocked(true);
+        setSavedNotice(library.error.message || 'Saved mixes could not be opened. Enable browser storage and reload.');
+      } else {
+        setSavedMixes(library.projects);
+        const id = initialProjectId();
+        setActiveProjectId(library.projects.some((project) => project.id === id) ? id : null);
+      }
       setBooting(false);
     })();
     const interval = window.setInterval(() => {
@@ -64,6 +86,7 @@ export default function useStudio() {
       canceled = true;
       alive.current = false;
       importLock.current = false;
+      projectLock.current = false;
       window.clearInterval(interval);
       player.dispose();
     };
@@ -75,19 +98,44 @@ export default function useStudio() {
     engine.current?.setMaster(mix.master);
   }, [mix]);
 
+  function persistWorkspace(next, projectId) {
+    try {
+      localStorage.setItem(STUDIO_STORAGE_KEY, JSON.stringify({ ...serializeMix(next), projectId }));
+      return true;
+    } catch {
+      if (alive.current) setStorageNotice('Settings could not be saved. You can keep mixing in this tab.');
+      return false;
+    }
+  }
+
   useEffect(() => {
     if (booting || storageBlocked) return;
-    const save = async () => localStorage.setItem(STUDIO_STORAGE_KEY, JSON.stringify(serializeMix(mix)));
-    void save().catch(() => {
-      if (alive.current) setStorageNotice('Settings could not be saved. You can keep mixing in this tab.');
-    });
-  }, [mix, booting, storageBlocked]);
+    persistWorkspace(mix, activeProjectId);
+  }, [mix, activeProjectId, booting, storageBlocked]);
+
+  function changeMix(next) {
+    mixRef.current = next;
+    setMix(next);
+  }
+
+  // If the persisted workspace cannot be read, retain files rather than risk deleting a reference.
+  async function reclaim(ids, next) {
+    if (storageBlocked || projectsBlocked) return;
+    let stored;
+    try { stored = validateMix(JSON.parse(localStorage.getItem(STUDIO_STORAGE_KEY))); } catch { return; }
+    if (!stored) return;
+    try { await deleteUnusedAudio(ids, [...next.tracks, ...stored.tracks]); }
+    catch { if (alive.current) setStorageNotice('Unused audio could not be cleaned up. Your remaining recordings have been kept.'); }
+  }
 
   function updateTrack(id, changes) {
+    if (projectLock.current) return;
     setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, ...changes } : track) }));
   }
 
-  function setMaster(master) { setMix((previous) => ({ ...previous, master })); }
+  function setMaster(master) {
+    if (!projectLock.current) setMix((previous) => ({ ...previous, master }));
+  }
 
   async function togglePlayback() {
     if (statusRef.current === 'playing' || statusRef.current === 'loading') {
@@ -95,12 +143,14 @@ export default function useStudio() {
       setElapsed(engine.current.position());
       return;
     }
+    if (projectLock.current) return;
     setNotice('');
     try { await engine.current.play(withSources(mixRef.current.tracks), files.current, mixRef.current.master); }
     catch (error) { if (alive.current) setNotice(error.message); }
   }
 
   async function restartPlayback() {
+    if (projectLock.current) return;
     const wasPlaying = statusRef.current === 'playing';
     engine.current.restart();
     setElapsed(0);
@@ -108,6 +158,7 @@ export default function useStudio() {
   }
 
   async function addSound(sound) {
+    if (projectLock.current) return;
     const current = mixRef.current;
     if (current.tracks.some((track) => track.id === sound.id)) return;
     if (current.tracks.length >= MAX_TRACKS) { setNotice('A mix can contain up to 8 layers. Remove one to add another.'); return; }
@@ -117,12 +168,12 @@ export default function useStudio() {
       try { await engine.current.load({ ...track, src: sound.src }); }
       catch (error) { if (alive.current) setNotice(error.message); return; }
     }
-    if (alive.current) setMix((previous) => previous.tracks.some((item) => item.id === track.id) || previous.tracks.length >= MAX_TRACKS
+    if (alive.current && !projectLock.current) setMix((previous) => previous.tracks.some((item) => item.id === track.id) || previous.tracks.length >= MAX_TRACKS
       ? previous : { ...previous, tracks: [...previous.tracks, track] });
   }
 
   async function importFiles(selected, role) {
-    if (importLock.current || !selected.length) return;
+    if (importLock.current || projectLock.current || !selected.length) return;
     importLock.current = true;
     setImporting(true);
     setNotice('');
@@ -159,27 +210,93 @@ export default function useStudio() {
   }
 
   async function removeTrack(id) {
-    engine.current.forget(id);
-    delete files.current[id];
-    setMix((previous) => ({ ...previous, tracks: previous.tracks.filter((track) => track.id !== id) }));
-    setDetails((previous) => { const next = { ...previous }; delete next[id]; return next; });
-    if (id.startsWith('custom-')) {
-      try { await deleteAudio(id); }
-      catch { if (alive.current) setStorageNotice('The layer was removed, but its saved file could not be deleted. Browser site settings can clear local audio storage.'); }
+    if (projectLock.current || importLock.current || booting) return;
+    projectLock.current = true;
+    setProjectBusy(true);
+    try {
+      engine.current.forget(id);
+      delete files.current[id];
+      const next = { ...mixRef.current, tracks: mixRef.current.tracks.filter((track) => track.id !== id) };
+      changeMix(next);
+      setDetails((previous) => { const copy = { ...previous }; delete copy[id]; return copy; });
+      if (!storageBlocked && persistWorkspace(next, activeProjectId)) await reclaim([id], next);
+    } finally {
+      projectLock.current = false;
+      if (alive.current) setProjectBusy(false);
+    }
+  }
+
+  async function projectAction(action, data) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading' || projectsBlocked) return false;
+    projectLock.current = true;
+    setProjectBusy(true);
+    setSavedNotice('');
+    const player = engine.current;
+    try {
+      if (action === 'open') {
+        const loaded = await readSavedMix(data.id);
+        if (!alive.current || player.disposed) return false;
+        const oldIds = mixRef.current.tracks.filter((track) => !track.catalogId).map((track) => track.id);
+        player.restart();
+        for (const id of new Set([...player.buffers.keys(), ...player.pending.keys()])) player.forget(id);
+        setElapsed(0);
+        setDetails({});
+        setNotice('');
+        files.current = loaded.files;
+        const next = validateMix(loaded.project.mix);
+        changeMix(next);
+        setActiveProjectId(loaded.project.id);
+        setStorageBlocked(false);
+        setSavedNotice('Opened “' + loaded.project.name + '”. Press Play to listen.');
+        if (persistWorkspace(next, loaded.project.id)) await reclaim(oldIds, next);
+      } else {
+        const previous = savedMixes.find((project) => project.id === data.id);
+        const projects = await writeSavedMix(action, { ...data, mix: mixRef.current });
+        if (!alive.current || player.disposed) return false;
+        setSavedMixes(projects);
+        let activeId = activeProjectId;
+        if (action === 'save' || action === 'update') activeId = data.id;
+        if (action === 'delete' && data.id === activeProjectId) activeId = null;
+        setActiveProjectId(activeId);
+        const project = projects.find((item) => item.id === data.id);
+        setSavedNotice(action === 'delete' ? 'Saved mix deleted. Your current workspace is still here.'
+          : action === 'rename' ? 'Renamed to “' + project.name + '”.' : 'Saved “' + project.name + '”.');
+        if (persistWorkspace(mixRef.current, activeId) && previous && (action === 'delete' || action === 'update')) {
+          await reclaim(previous.mix.tracks.filter((track) => !track.catalogId).map((track) => track.id), mixRef.current);
+        }
+      }
+      return true;
+    } catch (error) {
+      if (alive.current) setSavedNotice(error.message || 'This action could not be completed. Try again.');
+      return false;
+    } finally {
+      projectLock.current = false;
+      if (alive.current) setProjectBusy(false);
     }
   }
 
   function resetLevels() {
+    if (projectLock.current) return;
     setMix((previous) => ({ master: 75, tracks: previous.tracks.map((track) => ({ ...track,
       volume: SOUNDS.find((sound) => sound.id === track.catalogId)?.volume ?? 50, muted: false, solo: false })) }));
   }
 
   function applyBlend(volumes) {
+    if (projectLock.current) return;
     setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.catalogId
       ? { ...track, volume: volumes[track.catalogId], muted: volumes[track.catalogId] === 0, solo: false } : track) }));
   }
 
+  const activeProject = savedMixes.find((project) => project.id === activeProjectId);
+  const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
   return { ...mix, status, elapsed, details, notice, storageNotice, booting, importing,
-    busy: booting || importing || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
-    addSound, importFiles, removeTrack, resetLevels, applyBlend };
+    savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
+    busy: booting || importing || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
+    addSound, importFiles, removeTrack, resetLevels, applyBlend,
+    saveMix: (name) => projectAction('save', { id: 'mix-' + crypto.randomUUID(), name }),
+    updateSavedMix: () => activeProject && projectAction('update', { id: activeProject.id }),
+    openMix: (id) => projectAction('open', { id }),
+    renameMix: (id, name) => projectAction('rename', { id, name }),
+    deleteMix: (id) => projectAction('delete', { id }),
+  };
 }

@@ -6,7 +6,7 @@ NatureMix is the current working name. This is a personal web homework project, 
 
 ## Current features
 
-- Dark nature-inspired interface with restrained neon-green accents and responsive layouts.
+- Dark emerald interface with mint highlights, subtle category colors, and responsive layouts.
 - Included Rain, Birds, and Music recordings, with search and category filters.
 - Dynamic mixer with up to eight layers.
 - Multiple local file import with Nature, Music / instrumental, and Vocal roles.
@@ -17,6 +17,9 @@ NatureMix is the current working name. This is a personal web homework project, 
 - Waveform summaries calculated from actual decoded audio.
 - Mixer settings saved locally, including track membership and role.
 - Imported audio stored in IndexedDB and restored after reload.
+- Up to 20 named saved mixes, with Open, Save changes, Rename, and Delete.
+- Saved snapshots share imported recordings without duplicating audio files.
+- Opening a saved mix restores its layers/controls and stops playback at the beginning.
 - English errors for missing, unsupported, invalid, oversized, and unavailable audio.
 - Existing mixer levels/mute migrate from the previous settings key.
 - The earlier Focus/Break dashboard is no longer rendered.
@@ -40,7 +43,7 @@ Commands:
     npm run build
     npm run preview
 
-The test script runs 13 tests across tests/studio.test.js and tests/audioEngine.test.js. It does not require another testing dependency.
+The test script runs 21 tests across tests/studio.test.js, tests/audioEngine.test.js, and tests/savedMixes.test.js. It does not require another testing dependency.
 
 ## Included audio
 
@@ -69,13 +72,34 @@ Choose an import role, click Import audio, and select one or more files. Each fi
 - Formats depend on browser decoding support; common MP3, WAV, OGG, FLAC, and M4A files are accepted for decoding.
 - Nature imports loop by default. Music/instrumental and vocal imports do not.
 - Changing a role does not automatically change an existing loop setting.
-- Removing a custom layer also removes its stored local audio copy. The original file on the user's computer is not modified.
+- Removing a custom layer releases its stored audio only when no saved mix or current workspace uses it. The original file on the user's computer is not modified.
 - Reload restores the saved mix but never automatically starts playback.
 - The transport position resets on reload; this version saves settings/files, not the position across visits.
 
 Import is local browser processing, not a cloud upload. Clearing browser site data removes saved files/settings. Localhost and Vercel have separate storage; data does not synchronize across browsers or devices.
 
 If browser storage fails, the interface explains that files/settings may only remain available in the current tab. Keep the original recordings.
+
+## Saved mixes
+
+1. Enter a Mix name and choose Save as new.
+2. Adjust your workspace. Unsaved changes means the named snapshot has not been updated; the current workspace still uses its usual auto-save behavior.
+3. Choose Save changes to replace the opened mix's snapshot, or Save as new to keep another variation.
+4. Choose Open to restore a saved snapshot. Confirm replacement when the workspace has edits; Cancel keeps the workspace. Successful opening stops playback and resets the transport to zero. Press Play explicitly.
+5. Rename changes the saved name only; it does not save current mixer edits.
+6. Delete removes the saved entry. The current workspace remains open and becomes unnamed when its saved entry is deleted.
+
+Names must be nonempty and at most 60 characters; repeated whitespace is normalized. Names are unique without regard to letter case. The limit is 20 mixes, including empty workspaces.
+
+Each snapshot includes ordered layer IDs, roles, levels, mute/solo, loop, and master volume. Snapshots do not include rendered audio, waveform buffers, or temporary URLs. This feature saves configurations, not an exported audio file.
+
+Project records use the mixes store in IndexedDB database naturemix-audio-v1, schema version 2. The upgrade preserves the existing files store and imported recordings. The current workspace keeps naturemix-studio-v1 and an optional projectId; its previous schema remains readable.
+
+A recording used by several snapshots is stored once. Removing a layer, replacing a snapshot, or deleting a saved entry reclaims a stored file only after its final saved/current-workspace reference is gone. Opening another workspace releases unused decoded buffers. Persistent reference checks and project writes use transactions across the files and mixes stores.
+
+Failed saves do not create a successful-looking entry. A saved mix with missing audio cannot replace the current workspace; its stored snapshot is kept. Unreadable/invalid saved collections are preserved and edits to them are disabled until the problem is resolved. Cleanup retains files if workspace/project storage cannot be read safely.
+
+Saved mixes are local to this browser profile and website origin. Localhost and Vercel are separate; there is no cloud or multi-device synchronization.
 
 ## Playback behavior
 
@@ -101,20 +125,22 @@ This aligns playback timing. It does not detect BPM, match musical key, remove l
 - src/App.jsx and src/App.css: studio composition and layout.
 - src/components/SoundLibrary.jsx: actual included catalog/search.
 - src/components/AudioImport.jsx: local import.
+- src/components/SavedMixes.jsx and SavedMixes.css: named snapshot controls and responsive styling.
 - src/components/MixWorkspace.jsx: blends, mixer, transport, and master controls.
 - src/components/TrackControl.jsx: layer controls and waveform summaries.
 - src/components/Icon.jsx: SVG icons.
 - src/data/sounds.js: catalog and import limits.
 - src/hooks/useStudio.js: UI state, persistence, import, and audio lifecycle.
 - src/lib/audioEngine.js: decoded audio, routing, scheduling, and cleanup.
-- src/lib/audioStorage.js: local imported-file storage.
+- src/lib/audioStorage.js: local audio/project storage, atomic reference checks, and cleanup.
+- src/lib/savedMixes.js: snapshot validation, names, limits, dirty checks, and references.
 - src/lib/studioState.js: validation, settings migration, and serialization.
 
 Legacy focus/mixer source files may remain in an existing checkout, but the new App does not import the old dashboard. Existing focus history is not erased.
 
 ## Verification
 
-Automated tests cover settings migration, malformed storage, duplicate IDs, metadata serialization, file validation, mute/solo, common scheduling, pause/resume, live controls, canceled decoding, retry, source cleanup, old completion events, recording duration, and decoded-memory limits.
+Automated tests cover settings migration, malformed storage, duplicate IDs, metadata serialization, file validation, mute/solo, common scheduling, pause/resume, live controls, canceled decoding, retry, source cleanup, old completion events, recording duration, and decoded-memory limits. Saved mix tests cover snapshots, names, collisions, update/rename identity, collection limits, shared audio references, corrupt records, missing IDs, and dirty detection.
 
 Manual checks:
 
@@ -127,7 +153,13 @@ Manual checks:
 7. Try an invalid file and confirm an actionable error.
 8. Remove every layer; verify the empty workspace and disabled Play.
 9. Add a catalog sound again.
-10. Check desktop/mobile layout and keyboard focus.
+10. Save two named mixes containing the same imported recording; verify no duplicate stored file.
+11. Change controls, cancel opening another mix, then confirm opening and check that playback stops at zero.
+12. Rename without saving edits; verify the snapshot is unchanged.
+13. Remove a custom layer, then reopen a saved mix using it; verify audio remains available.
+14. Save changes and delete a mix; verify other mixes/current-workspace recordings remain usable.
+15. Reload and check names, snapshots, active mix, and audio.
+16. Check desktop/mobile layout and keyboard focus.
 
 ## StemForge workflow
 
@@ -137,7 +169,6 @@ There is no direct API connection between these two sites in this release. Match
 
 ## Next milestones
 
-- Named mix projects.
 - Sample trimming and selected-region looping.
 - Rhythm patterns made from short nature samples.
 - Clip arrangement, fades, and selected effects.

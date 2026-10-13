@@ -1,0 +1,41 @@
+.saved-panel { padding: 22px; background: radial-gradient(ellipse at 0% 0%, #1a665528, transparent 65%), var(--panel); }
+.saved-panel h2 { font-size: 19px; }
+.saved-description { font-size: 11px; line-height: 1.8; color: #a3afba; margin-top: 16px; }
+.save-mix-form { display: grid; gap: 9px; margin-top: 17px; }
+.save-mix-form label { font-size: 10px; color: #b6c4cf; }
+.save-mix-form input, .saved-confirm input { min-width: 0; width: 100%; border: 1px solid #3a504b; border-radius: 7px; background: #0c1415; color: var(--text); padding: 10px; font-size: 11px; }
+.save-mix-form input::placeholder { color: #929fab; }
+.saved-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #477667; border-radius: 7px; padding: 9px 10px; color: #bbf5df; background: #1c393342; font-size: 11px; font-weight: 550; }
+.saved-button:hover:not(:disabled) { background: #244c3f; border-color: #71b69e; }
+.saved-panel button:disabled, .saved-panel input:disabled { opacity: .45; }
+.saved-current { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); display: grid; gap: 9px; }
+.saved-current > span { color: #a6b8c3; font-size: 10px; line-height: 1.7; overflow-wrap: anywhere; }
+.saved-current strong { color: #d7ede5; font-weight: 550; }
+.saved-current p { color: #9faeba; font-size: 9px; line-height: 1.7; }
+.saved-list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; max-height: 385px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #456255 transparent; }
+.saved-item { padding: 12px; border: 1px solid #30403e; border-radius: 9px; background: #ffffff03; min-width: 0; }
+.saved-item.is-current { background: #57efc208; border-color: #4c7866; }
+.saved-item-heading { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.saved-item-heading strong { font-size: 12px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-active { margin-left: auto; color: var(--accent); font-size: 8px; }
+.saved-item > p { color: #a0aebb; font-size: 9px; line-height: 1.7; margin-top: 5px; }
+.saved-item-actions { display: flex; gap: 8px; margin-top: 11px; }
+.saved-item-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-size: 9px; border: 1px solid #3c4a4e; border-radius: 5px; padding: 6px 7px; background: #ffffff02; color: #c2d0d7; }
+.saved-item-actions button:hover:not(:disabled) { border-color: #739b8c; color: var(--accent); }
+.saved-item-actions .saved-delete { margin-left: auto; }
+.saved-item-actions .saved-delete:hover:not(:disabled) { color: #ffc5b8; border-color: #b16e6350; }
+.saved-confirm { margin-top: 12px; padding-top: 12px; border-top: 1px solid #42614f; }
+.saved-confirm fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.saved-confirm legend { font-size: 10px; color: #d6eee3; margin-bottom: 9px; }
+.saved-confirm p { font-size: 10px; line-height: 1.8; color: #b0bfca; }
+.saved-confirm fieldset > div { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.saved-confirm button { border: 1px solid #456859; border-radius: 5px; font-size: 9px; padding: 7px 8px; color: #d2eade; background: #25413366; }
+.saved-confirm button:last-child { color: #b6c3cd; background: transparent; border-color: #3c4a4e; }
+.saved-empty { font-size: 11px; color: #a0b3ba; line-height: 1.8; margin-top: 17px; }
+.saved-notice { font-size: 10px; line-height: 1.8; color: #c2ddcf; background: #57efc207; border: 1px solid #42614f; border-radius: 7px; margin-top: 14px; padding: 10px; overflow-wrap: anywhere; }
+.saved-footnote { font-size: 9px; color: #99a9b2; line-height: 1.8; margin-top: 16px; }
+.workspace-project { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; margin: -7px 0 20px; font-size: 10px; color: #becfc8; }
+.workspace-project > span:first-child { overflow-wrap: anywhere; }
+.workspace-project > span:last-child { color: #95aa9e; font-size: 9px; }
+@media (max-width: 580px) { .saved-panel { padding: 20px; } .saved-list { max-height: 420px; } .app-header { gap: 14px; } .app-header nav { gap: 11px; font-size: 9px; } }
+@media (max-width: 360px) { .brand { font-size: 18px; gap: 6px; } .brand-icon { width: 26px; height: 26px; } .app-header { gap: 10px; } .app-header nav { gap: 8px; font-size: 8px; } }
