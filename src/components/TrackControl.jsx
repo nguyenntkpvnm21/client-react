@@ -13,9 +13,9 @@ export default function TrackControl({ track, index, studio }) {
       <span className="track-icon"><Icon name={sound?.icon || (track.role === 'nature' ? 'leaf' : track.role)} size={22} /></span>
       <div className="track-name"><h3 title={track.name}>{track.name}</h3><span>{track.catalogId ? 'Included recording' : 'Your recording'}{info ? ' · ' + formatTime(info.duration) : ''}</span></div>
       <div className="track-buttons">
-        <button type="button" aria-label={'Mute ' + track.name} title="Mute" aria-pressed={track.muted} onClick={() => studio.updateTrack(track.id, { muted: !track.muted })}>M</button>
-        <button type="button" aria-label={'Solo ' + track.name} title="Solo" aria-pressed={track.solo} onClick={() => studio.updateTrack(track.id, { solo: !track.solo })}>S</button>
-        <button type="button" aria-label={'Loop ' + track.name} title="Loop" aria-pressed={track.loop} onClick={() => studio.updateTrack(track.id, { loop: !track.loop })}><Icon name="loop" size={17} /></button>
+        <button type="button" disabled={studio.projectBusy} aria-label={'Mute ' + track.name} title="Mute" aria-pressed={track.muted} onClick={() => studio.updateTrack(track.id, { muted: !track.muted })}>M</button>
+        <button type="button" disabled={studio.projectBusy} aria-label={'Solo ' + track.name} title="Solo" aria-pressed={track.solo} onClick={() => studio.updateTrack(track.id, { solo: !track.solo })}>S</button>
+        <button type="button" disabled={studio.projectBusy} aria-label={'Loop ' + track.name} title="Loop" aria-pressed={track.loop} onClick={() => studio.updateTrack(track.id, { loop: !track.loop })}><Icon name="loop" size={17} /></button>
         <button className="remove-layer" type="button" aria-label={'Remove ' + track.name} title="Remove layer" disabled={studio.busy} onClick={() => studio.removeTrack(track.id)}><Icon name="trash" size={16} /></button>
       </div>
     </div>
@@ -25,9 +25,9 @@ export default function TrackControl({ track, index, studio }) {
           : <span className="waveform-pending">Waveform loads with audio</span>}
       </div>
       <label className="track-level"><span className="sr-only">{track.name + ' volume'}</span><input type="range" min="0" max="100" value={track.volume}
-        style={{ '--level': track.volume + '%' }} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
+        style={{ '--level': track.volume + '%' }} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
     </div>
-    {!track.catalogId && <label className="track-role"><span>Use as</span><select aria-label={track.name + ' role'} value={track.role}
+    {!track.catalogId && <label className="track-role"><span>Use as</span><select aria-label={track.name + ' role'} disabled={studio.projectBusy} value={track.role}
       onChange={(event) => studio.updateTrack(track.id, { role: event.target.value })}>{ROLES.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>}
   </article>;
 }

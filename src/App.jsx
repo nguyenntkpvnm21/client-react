@@ -4,6 +4,7 @@ import AudioImport from './components/AudioImport';
 import Icon from './components/Icon';
 import MixWorkspace from './components/MixWorkspace';
 import SoundLibrary from './components/SoundLibrary';
+import SavedMixes from './components/SavedMixes';
 import useStudio from './hooks/useStudio';
 
 export default function App() {
@@ -19,7 +20,7 @@ export default function App() {
     <a className="skip-link" href="#studio">Skip to mixer</a>
     <header className="app-header">
       <a className="brand" href="#studio" aria-label="NatureMix studio"><span className="brand-icon"><Icon name="leaf" size={22} /></span><span>nature<span>mix</span><span className="brand-period">.</span></span></a>
-      <nav aria-label="Main navigation"><a className="nav-active" href="#studio">Studio</a><a href="#my-sounds">Your sounds</a></nav>
+      <nav aria-label="Main navigation"><a className="nav-active" href="#studio">Studio</a><a href="#saved-mixes">Saved mixes</a><a href="#my-sounds">Your sounds</a></nav>
       <span className="local-label"><span className="small-dot" />Local workspace</span>
     </header>
     <main className="app-main">
@@ -28,7 +29,7 @@ export default function App() {
         <div className="intro-action"><button type="button" className="primary-button" disabled={studio.busy} onClick={() => inputRef.current?.click()}><Icon name="upload" size={17} />Import your sound</button><span>Bring nature, music or vocal stems.</span></div>
       </section>
       <div className="studio-layout">
-        <aside className="library-column" aria-label="Included sounds"><SoundLibrary studio={studio} /></aside>
+        <aside className="library-column" aria-label="Sound library and saved mixes"><SoundLibrary studio={studio} /><SavedMixes studio={studio} /></aside>
         <MixWorkspace studio={studio} />
         <aside className="import-column" aria-label="Your audio">
           <AudioImport studio={studio} role={role} setRole={setRole} inputRef={inputRef} chooseFiles={chooseFiles} />
