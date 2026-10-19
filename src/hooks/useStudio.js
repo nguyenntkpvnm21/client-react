@@ -1,3 +1,4 @@
+import { validateRegion } from '../lib/clipRegion.js';
 import { useEffect, useRef, useState } from 'react';
 import { MAX_TRACKS, SOUNDS, createTrack } from '../data/sounds.js';
 import { AudioEngine } from '../lib/audioEngine.js';
@@ -32,6 +33,8 @@ export default function useStudio() {
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectsBlocked, setProjectsBlocked] = useState(false);
   const [savedNotice, setSavedNotice] = useState('');
+  const [editorId, setEditorId] = useState(null);
+  const [preview, setPreview] = useState(null);
   const engine = useRef(null);
   const files = useRef({});
   const mixRef = useRef(null);
@@ -80,7 +83,7 @@ export default function useStudio() {
       setBooting(false);
     })();
     const interval = window.setInterval(() => {
-      if (!canceled) setElapsed(player.position());
+      if (!canceled) { setElapsed(player.position()); setPreview(player.previewPosition()); }
     }, 250);
     return () => {
       canceled = true;
@@ -130,6 +133,11 @@ export default function useStudio() {
 
   function updateTrack(id, changes) {
     if (projectLock.current) return;
+    const current = mixRef.current.tracks.find((track) => track.id === id);
+    if (current && changes.loop !== undefined && current.clipEnd != null && changes.loop !== current.loop) {
+      engine.current.restart();
+      setElapsed(0);
+    }
     setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, ...changes } : track) }));
   }
 
@@ -214,6 +222,7 @@ export default function useStudio() {
     projectLock.current = true;
     setProjectBusy(true);
     try {
+      if (editorId === id) setEditorId(null);
       engine.current.forget(id);
       delete files.current[id];
       const next = { ...mixRef.current, tracks: mixRef.current.tracks.filter((track) => track.id !== id) };
@@ -234,6 +243,7 @@ export default function useStudio() {
     const player = engine.current;
     try {
       if (action === 'open') {
+        closeClip();
         const loaded = await readSavedMix(data.id);
         if (!alive.current || player.disposed) return false;
         const oldIds = mixRef.current.tracks.filter((track) => !track.catalogId).map((track) => track.id);
@@ -287,10 +297,54 @@ export default function useStudio() {
       ? { ...track, volume: volumes[track.catalogId], muted: volumes[track.catalogId] === 0, solo: false } : track) }));
   }
 
+  function stopPreview() {
+    engine.current?.stopPreview();
+    setPreview(null);
+  }
+
+  function closeClip() {
+    stopPreview();
+    setEditorId(null);
+  }
+
+  async function openClip(id) {
+    if (projectLock.current || importLock.current || booting) return;
+    stopPreview();
+    setEditorId(id);
+    setNotice('');
+    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    if (!track) return;
+    try { await engine.current.load(track, files.current[id]); }
+    catch (error) { if (alive.current) setNotice(error.message); }
+  }
+
+  async function previewClip(id, start, end, loop) {
+    if (projectLock.current || importLock.current) return;
+    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    if (!track) return;
+    try {
+      await engine.current.preview(track, files.current[id], start, end, loop);
+      if (alive.current) { setElapsed(engine.current.position()); setPreview(engine.current.previewPosition()); }
+    } catch (error) { if (alive.current) setNotice(error.message); }
+  }
+
+  function applyClip(id, start, end, loop, reset = false) {
+    if (projectLock.current || importLock.current) return;
+    const duration = engine.current.buffers.get(id)?.duration;
+    const region = validateRegion(start, end, duration);
+    engine.current.restart();
+    setElapsed(0);
+    setPreview(null);
+    updateTrack(id, { ...(reset ? { clipStart: 0, clipEnd: null } : region), loop });
+    setNotice(reset ? 'Full recording restored. Press Play to listen.' : 'Clip applied. The mix starts at the beginning of each selected region.');
+    setEditorId(null);
+  }
+
   const activeProject = savedMixes.find((project) => project.id === activeProjectId);
   const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
   return { ...mix, status, elapsed, details, notice, storageNotice, booting, importing,
     savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
+    editorId, preview, openClip, closeClip, previewClip, stopPreview, applyClip,
     busy: booting || importing || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
     addSound, importFiles, removeTrack, resetLevels, applyBlend,
     saveMix: (name) => projectAction('save', { id: 'mix-' + crypto.randomUUID(), name }),

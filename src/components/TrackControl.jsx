@@ -1,3 +1,4 @@
+import ClipEditor from './ClipEditor';
 import { ROLES, SOUNDS } from '../data/sounds.js';
 import { formatTime } from '../lib/studioState.js';
 import Icon from './Icon';
@@ -27,6 +28,10 @@ export default function TrackControl({ track, index, studio }) {
       <label className="track-level"><span className="sr-only">{track.name + ' volume'}</span><input type="range" min="0" max="100" value={track.volume}
         style={{ '--level': track.volume + '%' }} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
     </div>
+    <div className="clip-summary"><button type="button" className="text-button" disabled={studio.busy} aria-expanded={studio.editorId === track.id}
+      onClick={() => studio.editorId === track.id ? studio.closeClip() : studio.openClip(track.id)}>Edit clip</button>
+      <span>{track.clipEnd != null ? track.clipStart.toFixed(2) + '–' + track.clipEnd.toFixed(2) + ' s · ' + (track.loop ? 'Loop region' : 'Play once') : 'Full recording'}</span></div>
+    {studio.editorId === track.id && <ClipEditor key={track.id} track={track} info={info} studio={studio} />}
     {!track.catalogId && <label className="track-role"><span>Use as</span><select aria-label={track.name + ' role'} disabled={studio.projectBusy} value={track.role}
       onChange={(event) => studio.updateTrack(track.id, { role: event.target.value })}>{ROLES.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>}
   </article>;
