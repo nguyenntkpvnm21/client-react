@@ -1,0 +1,31 @@
+.clip-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; font-size: .72rem; color: var(--muted, #a5b4ae); }
+.clip-editor { margin-top: .8rem; padding: 1rem; border: 1px solid #3e6056; border-radius: 14px; background: linear-gradient(140deg, #15221f, #101516 70%); min-width: 0; }
+.clip-heading { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-bottom: .9rem; }
+.clip-heading h4 { margin: 0; font-size: .9rem; color: #e6f0eb; }
+.clip-heading button { font-size: .73rem; }
+.clip-wave { height: 92px; background: #0b1111; border-radius: 7px; overflow: hidden; }
+.clip-wave svg { width: 100%; height: 100%; display: block; }
+.clip-wave-base { fill: #50605b; }
+.clip-wave-selected { fill: #89e4c1; }
+.clip-selection { fill: #68e9b7; opacity: .1; }
+.clip-boundary { stroke: #70dfb7; stroke-width: 2; }
+.clip-playhead { stroke: white; stroke-width: 2; }
+.clip-times { display: flex; justify-content: space-between; gap: .5rem; font-size: .65rem; color: #a2b1ab; margin: .4rem 0 1rem; }
+.clip-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; }
+.clip-fields > div { min-width: 0; }
+.clip-fields label { display: block; font-size: .74rem; color: #c8d7d0; margin-bottom: .4rem; }
+.clip-fields input[type=number] { width: 100%; min-width: 0; background: #0c1111; color: #eef6f2; border: 1px solid #4e615a; padding: .6rem; border-radius: 7px; font: inherit; font-size: .85rem; }
+.clip-fields input[type=range] { width: 100%; margin: .6rem 0 0; accent-color: #7ce5be; }
+.clip-fields input[aria-invalid=true] { border-color: #dc8d8d; }
+.clip-loop { display: flex; align-items: center; gap: .5rem; font-size: .78rem; color: #d6e4dd; margin: .85rem 0; }
+.clip-loop input { accent-color: #7ce5be; width: 16px; height: 16px; }
+.clip-duration, .clip-error { font-size: .73rem; margin: .5rem 0; }
+.clip-duration { color: #9fdac3; }
+.clip-error { color: #ffb9b9; }
+.clip-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.clip-actions button, .clip-loading button { border: 1px solid #50665d; border-radius: 8px; padding: .55rem .7rem; font: inherit; font-size: .75rem; color: #e0eae5; background: #1c2b25; cursor: pointer; }
+.clip-actions .clip-apply { color: #082018; background: #8ae5bf; border-color: #8ae5bf; font-weight: 650; }
+.clip-editor button:disabled { opacity: .45; cursor: not-allowed; }
+.clip-editor :focus-visible { outline: 2px solid #b1ffe0; outline-offset: 3px; }
+.clip-help, .clip-loading { font-size: .71rem; line-height: 1.6; color: #a9bbb2; margin: .8rem 0 0; }
+@media (max-width: 480px) { .clip-editor { padding: .8rem; } .clip-fields { gap: .6rem; } .clip-heading { flex-wrap: wrap; } .clip-times { font-size: .61rem; } }

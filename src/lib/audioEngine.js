@@ -1,3 +1,4 @@
+import { clipRegion, validateRegion } from './clipRegion.js';
 import { audibleGain } from './studioState.js';
 
 const MEMORY_LIMIT = 512 * 1024 * 1024;
@@ -34,6 +35,9 @@ export class AudioEngine {
     this.request = 0;
     this.disposed = false;
     this.memory = 0;
+    this.previewRequest = 0;
+    this.previewNode = null;
+    this.previewId = null;
   }
 
   ensureContext() {
@@ -42,6 +46,7 @@ export class AudioEngine {
       this.context = this.createContext();
       this.masterNode = this.context.createGain();
       const compressor = this.context.createDynamicsCompressor();
+      this.compressor = compressor;
       compressor.threshold.value = -3;
       compressor.knee.value = 3;
       compressor.ratio.value = 12;
@@ -77,11 +82,15 @@ export class AudioEngine {
 
   startTrack(track, when, offset) {
     const buffer = this.buffers.get(track.id);
-    if (!buffer || (!track.loop && offset >= buffer.duration)) return;
+    if (!buffer) return;
+    const region = clipRegion(track, buffer.duration);
+    if (!track.loop && offset >= region.length) return;
     const source = this.context.createBufferSource();
     const gain = this.context.createGain();
     source.buffer = buffer;
     source.loop = track.loop;
+    source.loopStart = region.start;
+    source.loopEnd = region.end;
     gain.gain.value = audibleGain(track, this.tracks);
     source.connect(gain).connect(this.masterNode);
     const node = { source, gain };
@@ -93,7 +102,9 @@ export class AudioEngine {
       gain.disconnect();
       if (this.playing && this.nodes.size === 0) this.pause();
     };
-    source.start(when, track.loop ? offset % buffer.duration : offset);
+    const position = region.start + (track.loop ? offset % region.length : offset);
+    if (track.loop || region.end === buffer.duration) source.start(when, position);
+    else source.start(when, position, region.length - offset);
   }
 
   setTracks(tracks) {
@@ -145,6 +156,7 @@ export class AudioEngine {
   }
 
   async play(tracks, files, master) {
+    this.stopPreview();
     const context = this.ensureContext();
     const request = ++this.request;
     this.setTracks(tracks);
@@ -155,7 +167,7 @@ export class AudioEngine {
       await Promise.all(tracks.map((track) => this.load(track, files[track.id])));
       if (this.disposed || request !== this.request) return;
       if (context.state !== 'running') throw new Error('Playback is paused by your browser. Press Play again.');
-      if (!this.tracks.some((track) => track.loop) && this.tracks.every((track) => this.offset >= this.buffers.get(track.id)?.duration)) this.offset = 0;
+      if (!this.tracks.some((track) => track.loop) && this.tracks.every((track) => this.offset >= clipRegion(track, this.buffers.get(track.id).duration).length)) this.offset = 0;
       const when = context.currentTime + 0.06;
       this.anchor = when - this.offset;
       this.playing = true;
@@ -169,6 +181,7 @@ export class AudioEngine {
   }
 
   pause() {
+    this.stopPreview();
     this.offset = this.position();
     this.playing = false;
     this.request += 1;
@@ -182,11 +195,64 @@ export class AudioEngine {
   }
 
   forget(id) {
+    if (this.previewId === id) this.stopPreview();
     this.stopNode(id);
     this.pending.get(id)?.controller.abort();
     const buffer = this.buffers.get(id);
     if (buffer) this.memory -= buffer.length * buffer.numberOfChannels * 4;
     this.buffers.delete(id);
+  }
+
+  stopPreview() {
+    this.previewRequest += 1;
+    const node = this.previewNode;
+    this.previewNode = null;
+    this.previewId = null;
+    if (!node) return;
+    node.source.onended = null;
+    try { node.source.stop(); } catch { /* Already ended. */ }
+    node.source.disconnect();
+    node.gain.disconnect();
+  }
+
+  previewPosition() {
+    const node = this.previewNode;
+    if (!node) return null;
+    const elapsed = Math.max(0, this.context.currentTime - node.when);
+    return { id: node.id, position: node.start + (node.loop ? elapsed % node.length : Math.min(elapsed, node.length)) };
+  }
+
+  async preview(track, file, start, end, loop) {
+    this.pause();
+    const request = ++this.previewRequest;
+    this.previewId = track.id;
+    const context = this.ensureContext();
+    await context.resume();
+    if (this.disposed || request !== this.previewRequest) return;
+    const buffer = await this.load(track, file);
+    if (this.disposed || request !== this.previewRequest) return;
+    if (context.state !== 'running') throw new Error('Press Preview again to enable audio.');
+    const region = validateRegion(start, end, buffer.duration);
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = loop;
+    source.loopStart = region.clipStart;
+    source.loopEnd = region.clipEnd;
+    gain.gain.value = 0.4;
+    source.connect(gain).connect(this.compressor);
+    const node = { id: track.id, source, gain, start: region.clipStart,
+      length: region.clipEnd - region.clipStart, loop, when: context.currentTime + 0.03 };
+    this.previewNode = node;
+    source.onended = () => {
+      if (this.previewNode !== node) return;
+      this.previewNode = null;
+      this.previewId = null;
+      source.disconnect();
+      gain.disconnect();
+    };
+    if (loop) source.start(node.when, region.clipStart);
+    else source.start(node.when, region.clipStart, node.length);
   }
 
   dispose() {

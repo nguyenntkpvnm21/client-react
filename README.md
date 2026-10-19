@@ -183,3 +183,43 @@ There is no direct API connection between these two sites in this release. Match
 - Existing personal API: https://server-api-1-4i16.onrender.com/
 
 This release runs in the frontend. It does not call the garden API or implement server uploads, accounts, or stem separation.
+
+
+## Nondestructive audio clips
+
+Each layer has **Edit clip**. Opening it loads the waveform without starting playback.
+Choose Start and End using the sliders or numeric fields in seconds. The highlighted
+waveform shows the draft selection; at least 0.05 seconds is required unless the
+recording itself is shorter. The waveform is an overview of decoded samples, not a
+sample-level zoom editor.
+
+- **Preview clip** pauses the mix and auditions only this draft at a fixed 40% gain,
+  independent of the layer's mute/solo/volume and the master setting. **Stop preview**,
+  changing the draft, closing the editor, playing the mix, removing the layer, or
+  opening another saved mix cancels it.
+- **Loop selected region** repeats this selection. Otherwise it plays once.
+- **Apply range** commits the start/end/loop settings, stops playback, and resets the
+  common mix position to zero. Each layer's selected start becomes its timeline zero.
+- **Reset clip** restores the original recording without changing its file. Reset
+  levels and Base blends preserve clip settings.
+- Clip settings survive reload and are included in named mixes. Use **Save changes**
+  to update a named mix explicitly. Old saved mixes default to full recordings.
+- Cropped non-looping layers stop at their selected end; looped layers wrap within
+  their region during pause/resume. Changing Loop on an applied crop stops/resets
+  the mix. Volume, mute, solo and master changes keep playing sources in place.
+
+For related beat/vocal files, use the same source start on both layers if they must
+remain aligned. Region looping does not detect tempo or match beats. Sequencing,
+effects, arrangement and rendered audio export are future features.
+
+### Clip verification
+
+`npm run test` runs 33 tests covering the existing studio and saved mixes, region
+validation, compatibility, stored bounds, scheduled one-shots/loops, pause/resume,
+preview isolation/cancellation and source cleanup. Also run `npm run lint` and
+`npm run build`.
+
+For a manual check, select a short Birds region, preview once and looped, apply it,
+play/pause/resume, save a named mix, change the range, reopen the saved mix, and
+reload. Confirm that Reset clip restores the full recording and that the original
+file has not changed.

@@ -1,3 +1,4 @@
+import { clipMetadata } from './clipRegion.js';
 import { MAX_FILE_BYTES, MAX_TRACKS, ROLES, SOUNDS, createTrack } from '../data/sounds.js';
 
 export const STUDIO_STORAGE_KEY = 'naturemix-studio-v1';
@@ -19,7 +20,7 @@ export function validateMix(data) {
     if (!sound && (!item.id.startsWith('custom-') || typeof item.name !== 'string' || !item.name.trim())) continue;
     if (sound && item.id !== sound.id) continue;
     ids.add(item.id);
-    tracks.push({ id: item.id, catalogId: sound?.id || null,
+    tracks.push({ ...clipMetadata(item), id: item.id, catalogId: sound?.id || null,
       name: sound?.name || item.name.slice(0, 160),
       role: sound?.role || (validRole(item.role) ? item.role : 'nature'),
       volume: level(item.volume, sound?.volume ?? 50),
@@ -49,8 +50,8 @@ export function loadMix(storage) {
 }
 
 export function serializeMix(mix) {
-  return { version: 1, master: mix.master, tracks: mix.tracks.map(({ id, catalogId, name, role, volume, muted, solo, loop }) =>
-    ({ id, catalogId, name, role, volume, muted, solo, loop })) };
+  return { version: 1, master: mix.master, tracks: mix.tracks.map(({ id, catalogId, name, role, volume, muted, solo, loop, clipStart, clipEnd }) =>
+    ({ id, catalogId, name, role, volume, muted, solo, loop, ...clipMetadata({ clipStart, clipEnd }) })) };
 }
 
 export function validateAudioFile(file) {
