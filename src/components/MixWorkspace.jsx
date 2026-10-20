@@ -1,3 +1,4 @@
+import { isSequenced, sequenceMetadata } from '../lib/sequencerState.js';
 import { MAX_TRACKS } from '../data/sounds.js';
 import { formatTime } from '../lib/studioState.js';
 import Icon from './Icon';
@@ -11,7 +12,7 @@ const BLENDS = [
 
 export default function MixWorkspace({ studio }) {
   const active = studio.status === 'playing' || studio.status === 'loading';
-  const silent = studio.tracks.length > 0 && studio.tracks.every((track) => track.muted || !track.volume || (studio.tracks.some((item) => item.solo) && !track.solo));
+  const silent = studio.tracks.length > 0 && studio.tracks.every((track) => track.muted || !track.volume || (isSequenced(track) && !sequenceMetadata(track).steps.some(Boolean)) || (studio.tracks.some((item) => item.solo) && !track.solo));
   return <section className="workspace-panel panel" id="studio" aria-labelledby="mixer-title">
     <div className="mixer-heading"><div><p className="eyebrow">YOUR OWN LITTLE ECOSYSTEM</p><h2 id="mixer-title">Your mix<span className="count-pill">{studio.tracks.length}/{MAX_TRACKS}</span></h2></div>
       <button type="button" className="text-button" disabled={studio.busy} onClick={studio.resetLevels}><Icon name="reset" size={15} />Reset levels</button></div>
@@ -24,7 +25,7 @@ export default function MixWorkspace({ studio }) {
     </div>
     <div className="mixer-note"><Icon name="headphones" size={16} /><p>Nature sets the scene. Your music gives it a new story.</p></div>
     <div className="transport">
-      <div className="transport-left"><button type="button" className="play-button" disabled={studio.booting || (!active && (studio.importing || studio.projectBusy)) || !studio.tracks.length} onClick={studio.togglePlayback}>
+      <div className="transport-left"><button type="button" className="play-button" disabled={studio.booting || (!active && studio.busy) || !studio.tracks.length} onClick={studio.togglePlayback}>
         <Icon name={active ? 'pause' : 'play'} size={19} />{studio.status === 'loading' ? 'Cancel loading' : active ? 'Pause mix' : 'Play mix'}</button>
         <button type="button" className="restart-button" aria-label="Restart mix" title="Restart from the beginning" disabled={studio.busy || !studio.tracks.length}
           onClick={studio.restartPlayback}><Icon name="reset" size={19} /></button><span className="elapsed" aria-label="Mix playback position">{formatTime(studio.elapsed)}</span></div>

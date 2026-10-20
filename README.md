@@ -15,10 +15,13 @@ NatureMix is the current working name. This is a personal web homework project, 
 - Web Audio playback with a common scheduled start and timeline position.
 - Play, Pause, and Restart; pause excludes paused time.
 - Waveform summaries calculated from actual decoded audio.
+- Nondestructive clip selection with isolated Preview, selected-region looping, and Reset clip.
+- A 16-step sequencer with 40–240 BPM, per-layer patterns, Four beats, and Clear.
+- Shared playback of sequenced samples and normal ambience/stem layers.
 - Mixer settings saved locally, including track membership and role.
 - Imported audio stored in IndexedDB and restored after reload.
 - Up to 20 named saved mixes, with Open, Save changes, Rename, and Delete.
-- Saved snapshots share imported recordings without duplicating audio files.
+- Saved snapshots include BPM, patterns and clip bounds, and share imported recordings without duplicating audio files.
 - Opening a saved mix restores its layers/controls and stops playback at the beginning.
 - English errors for missing, unsupported, invalid, oversized, and unavailable audio.
 - Existing mixer levels/mute migrate from the previous settings key.
@@ -43,7 +46,7 @@ Commands:
     npm run build
     npm run preview
 
-The test script runs 21 tests across tests/studio.test.js, tests/audioEngine.test.js, and tests/savedMixes.test.js. It does not require another testing dependency.
+The test script runs 57 tests across tests/studio.test.js, tests/audioEngine.test.js, tests/savedMixes.test.js, tests/clips.test.js and tests/sequencer.test.js. It does not require another testing dependency.
 
 ## Included audio
 
@@ -128,10 +131,15 @@ This aligns playback timing. It does not detect BPM, match musical key, remove l
 - src/components/SavedMixes.jsx and SavedMixes.css: named snapshot controls and responsive styling.
 - src/components/MixWorkspace.jsx: blends, mixer, transport, and master controls.
 - src/components/TrackControl.jsx: layer controls and waveform summaries.
+- src/components/ClipEditor.jsx and ClipEditor.css: waveform region selection and isolated audition.
+- src/components/StepSequencer.jsx and StepSequencer.css: tempo, per-layer steps and keyboard grid controls.
 - src/components/Icon.jsx: SVG icons.
 - src/data/sounds.js: catalog and import limits.
 - src/hooks/useStudio.js: UI state, persistence, import, and audio lifecycle.
 - src/lib/audioEngine.js: decoded audio, routing, scheduling, and cleanup.
+- src/lib/clipRegion.js: clip validation and effective source bounds.
+- src/lib/sequencerState.js: pattern validation, tempo limits and grid math.
+- src/lib/stepScheduler.js: audio-clock hit scheduling, sample envelopes and cleanup.
 - src/lib/audioStorage.js: local audio/project storage, atomic reference checks, and cleanup.
 - src/lib/savedMixes.js: snapshot validation, names, limits, dirty checks, and references.
 - src/lib/studioState.js: validation, settings migration, and serialization.
@@ -169,8 +177,6 @@ There is no direct API connection between these two sites in this release. Match
 
 ## Next milestones
 
-- Sample trimming and selected-region looping.
-- Rhythm patterns made from short nature samples.
 - Clip arrangement, fades, and selected effects.
 - Defined-duration audio rendering/export.
 - More real catalog recordings and documented credits.
@@ -209,12 +215,12 @@ sample-level zoom editor.
   the mix. Volume, mute, solo and master changes keep playing sources in place.
 
 For related beat/vocal files, use the same source start on both layers if they must
-remain aligned. Region looping does not detect tempo or match beats. Sequencing,
-effects, arrangement and rendered audio export are future features.
+remain aligned. Region looping does not detect tempo or match beats. The step sequencer described below adds rhythmic triggering. Effects, arrangement
+and rendered audio export remain future features.
 
 ### Clip verification
 
-`npm run test` runs 33 tests covering the existing studio and saved mixes, region
+`npm run test` runs 57 tests covering the existing studio and saved mixes, region
 validation, compatibility, stored bounds, scheduled one-shots/loops, pause/resume,
 preview isolation/cancellation and source cleanup. Also run `npm run lint` and
 `npm run build`.
@@ -223,3 +229,86 @@ For a manual check, select a short Birds region, preview once and looped, apply 
 play/pause/resume, save a named mix, change the range, reopen the saved mix, and
 reload. Confirm that Reset clip restores the full recording and that the original
 file has not changed.
+
+
+## Step sequencer
+
+The wide **Make a rhythm** area sits below the mixer and keeps each sound's sample
+editor, audition controls and pattern together. A loop has four beats and sixteen
+steps. Playback is shared with the normal ambience/music layers and master control.
+
+1. Choose **Create rhythm** on a sound. It creates hits on steps 1, 5, 9 and 13 and
+   starts the mix. If no clip was selected, it uses the first 0.18 seconds (or the
+   entire recording when shorter). Existing selected clips are preserved. The row
+   is unmuted and a zero layer level is raised to 50%; an existing solo selection
+   also includes this row. Master volume is preserved.
+2. **Edit sample** opens the waveform inside that row. Select a range and choose
+   **Use this sample**. The editor closes and keyboard focus returns to that row's
+   Edit sample button. Applying a sample still stops/resets the shared transport.
+3. **Listen** auditions the selected sample once and pauses the mix. The inline
+   editor's Preview also auditions once; the normal layer's Loop setting is kept.
+4. Press **Play rhythm & mix** beside the grid. Toggle steps while listening;
+   edits cancel/rebuild upcoming hits without stopping the mix or continuous layers.
+   **Four beats** restores the starter pattern; **Clear** leaves that row silent
+   once its current sample tail ends. **Use normal playback** restores continuous
+   playback using the layer's current clip and Loop settings.
+5. Enter a whole-number speed from **40 to 240 BPM**, then choose **Set speed**.
+   During playback the new speed starts at the next loop; a notice shows the
+   current and pending BPM. Further changes replace the pending speed. Returning
+   to the current speed cancels the pending change. BPM changes trigger timing,
+   without stretching recordings or changing the continuous layers' timeline.
+6. **Save your mix** links to the existing named-mix controls. Save as new or Save
+   changes includes BPM, patterns, clips and mixer levels. Reload restores these
+   values without starting audio automatically.
+
+Each hit plays its sample once. The next hit on the same row cuts the previous tail;
+short clips can finish sooner. Small boundary fades reduce clicks. Mute, Solo,
+layer volume and Master still apply. A silent source recording remains silent;
+Edit sample lets you choose another part of it.
+
+### Timing and lifecycle
+
+A timer refills a 120 ms queue every 25 ms, while AudioContext time determines
+onsets. Live pattern edits cancel queued sources and rebuild upcoming hits. Tempo
+changes use a boundary on the existing grid, cancel any queued hits at or after
+that boundary, and schedule the replacement grid without doubling sources.
+Late timer callbacks skip missed steps rather than playing a backlog.
+
+Pause releases scheduled nodes and stores both rhythmic phase and the actual
+sample offset of an audible tail. Resume keeps that phase and tail, including a
+tail that began before a tempo transition. If paused before a pending speed change,
+Resume uses the chosen speed immediately at the saved phase. Restart resets both
+rhythm and continuous layers to the beginning.
+
+Sample application, project opening and Restart retain their reset behavior.
+Listen/Preview pauses the mix; closing an editor does not automatically resume it.
+Removing a layer, opening a project, disposal and scheduling failures release
+voices, gains and timers. Sequenced playback pauses when the tab is hidden or the
+audio context is interrupted. Return and press Play to continue.
+
+Old workspaces and saved mixes default to 100 BPM with normal playback on every
+row. Existing audio files and snapshots are not duplicated.
+
+### Keyboard and responsive layout
+
+Tab reaches Create rhythm, Edit sample, Listen and each step. Enter/Space toggles
+a step; Left/Right moves between steps and Home/End moves to the first/last step.
+Desktop shows four beat groups across; intermediate widths show two groups per
+line. Phones stack all four beat groups, each with four large step buttons. There
+is no horizontal grid scrolling. Step targets are at least 44 by 44 CSS pixels at
+the checked widths: 320, 390, 768, 1024 and 1440 pixels.
+
+### Verification
+
+The 57-test suite covers the existing mixer, clips and saved mixes plus queued-hit
+cancellation, live mode changes, loop-boundary tempo replacement/cancellation,
+phase/tail restoration across speed changes and failure cleanup. Run npm run test,
+npm run lint and npm run build.
+
+Chrome headless checks also exercised Create rhythm and playback, live step edits,
+queued BPM changes, inline sample editing and focus return, Listen, named saving,
+reload without autoplay and the responsive widths above. These are implementation
+checks; listening quality and ease of use still benefit from user testing.
+
+Arrangement, effects, song tempo detection and rendered audio export remain outside
+this iteration.

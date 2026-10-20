@@ -1,0 +1,68 @@
+.sequencer { margin-top: 24px; padding: 28px; min-width: 0; border-color: #34574c; background: radial-gradient(ellipse at 100% 0, #2b88631b, transparent 65%), #0c1517; }
+.sequencer-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.sequencer-heading .eyebrow { color: #91bdaa; margin-bottom: 8px; }
+.sequencer h2 { font-size: 26px; font-weight: 620; letter-spacing: -.7px; }
+.sequencer-intro { font-size: 13px; line-height: 1.7; color: #b7cdc2; margin-top: 9px; }
+.sequencer-save { color: #9ce5c9; font-size: 13px; padding: 10px 0; white-space: nowrap; }
+.sequencer-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 24px; padding: 22px 0; margin-top: 18px; border-top: 1px solid #2e463d; border-bottom: 1px solid #2e463d; }
+.sequencer-playback { display: flex; align-items: center; gap: 8px; }
+.sequencer-playback .play-button { min-height: 44px; font-size: 12px; }
+.sequencer-playback .restart-button { width: 44px; height: 44px; }
+.tempo-form { margin-left: auto; flex: 0 0 auto; }
+.tempo-form label { display: flex; justify-content: space-between; color: #c5d9cf; font-size: 12px; margin-bottom: 6px; }
+.tempo-form label span { color: #89b9a5; }
+.tempo-form > div { display: flex; gap: 6px; }
+.tempo-form input { width: 76px; min-width: 0; padding: 9px; color: #dff9eb; border: 1px solid #4e7160; background: #080f11; border-radius: 7px; font-size: 15px; min-height: 44px; }
+.sequencer button:not(.play-button):not(.restart-button):not(.sequence-steps button) { border: 1px solid #39584b; background: #1b3028; color: #d1efdf; padding: 8px 12px; font-size: 12px; border-radius: 7px; min-height: 44px; }
+.tempo-form > p { font-size: 11px; color: #a0b8ad; margin: 5px 0 0; line-height: 1.5; }
+.tempo-form .tempo-error { color: #ffc0b9; }
+.sequencer-meter { display: grid; gap: 8px; font-size: 12px; color: #adc6ba; }
+.sequencer-meter output { color: #d5f1e0; font-variant-numeric: tabular-nums; }
+.sequencer-feedback { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: #acd5be; font-size: 12px; line-height: 1.7; padding: 16px 0; }
+.sequencer-feedback > span { color: #91ae9d; }
+.sequence-rows { display: grid; gap: 14px; }
+.sequence-row { --rhythm-color: #8cdeb1; padding: 20px; border: 1px solid #304b3e; border-radius: 12px; background: #111e1b; min-width: 0; }
+.sequence-row.music { --rhythm-color: #c0aceb; }
+.sequence-row.vocal { --rhythm-color: #efaec7; }
+.sequence-row-heading { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; }
+.sequence-sound { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.sequence-sound-icon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 9px; background: #83d3a410; color: var(--rhythm-color); }
+.sequence-sound > div { min-width: 0; }
+.sequence-sound h3 { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.sequence-sound p { color: #a0b7aa; font-size: 12px; line-height: 1.6; margin-top: 4px; }
+.sequence-tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.sequence-tools button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.sequence-tools .create-rhythm { background: #a0e7c3 !important; color: #10291e !important; border-color: #b6f3d4 !important; font-weight: 650; }
+.sequence-beat-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.sequence-beat { min-width: 0; }
+.sequence-beat-label { display: block; margin-bottom: 8px; color: #a4c1af; font-size: 11px; }
+.sequence-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.sequence-steps button { min-height: 46px; min-width: 0; padding: 0; border-radius: 7px; border: 1px solid #3b5949; background: #1b3026; color: #b7cfbe; font-size: 13px; position: relative; touch-action: manipulation; }
+.sequence-steps button.beat-start { border-left: 3px solid #6b9a7b; }
+.sequence-steps button[aria-pressed=true] { background: var(--rhythm-color); color: #10251a; border-color: var(--rhythm-color); font-weight: 700; }
+.sequence-steps button.is-current { outline: 2px solid #f0fff6; outline-offset: 2px; }
+.sequence-steps button.is-current:after { content: ''; width: 5px; height: 5px; background: currentColor; border-radius: 50%; position: absolute; left: calc(50% - 2.5px); bottom: 4px; }
+.sequence-row-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; font-size: 12px; color: #acc6b5; line-height: 1.6; }
+.sequence-row-footer > div { display: flex; gap: 8px; }
+.sequence-idle, .sequencer-help { margin-top: 16px; color: #a9beb1; font-size: 12px; line-height: 1.8; }
+.sequencer button:disabled { opacity: .4; cursor: not-allowed; }
+.sequencer :focus-visible { outline: 2px solid #beffdc; outline-offset: 3px; }
+.sequencer .clip-editor { margin-top: 18px; }
+@media (max-width: 1100px) { .sequence-beat-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 580px) {
+  .sequencer { padding: 20px 16px; }
+  .sequencer-heading { flex-wrap: wrap; gap: 8px; }
+  .sequencer h2 { font-size: 24px; }
+  .sequencer-save { padding: 6px 0; }
+  .sequencer-toolbar { gap: 18px; }
+  .sequencer-playback { width: 100%; }
+  .sequencer-playback .play-button { flex: 1; }
+  .sequencer-meter { width: 100%; }
+  .tempo-form { margin-left: 0; width: 100%; }
+  .tempo-form label { justify-content: flex-start; gap: 12px; }
+  .sequence-row { padding: 14px 12px; }
+  .sequence-tools { width: 100%; gap: 6px; }
+  .sequence-tools .create-rhythm { flex: 1; }
+  .sequence-beat-groups { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .sequence-steps button { min-height: 48px; }
+}

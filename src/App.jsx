@@ -5,6 +5,7 @@ import Icon from './components/Icon';
 import MixWorkspace from './components/MixWorkspace';
 import SoundLibrary from './components/SoundLibrary';
 import SavedMixes from './components/SavedMixes';
+import StepSequencer from './components/StepSequencer';
 import useStudio from './hooks/useStudio';
 
 export default function App() {
@@ -39,6 +40,7 @@ export default function App() {
           </section>
         </aside>
       </div>
+      <StepSequencer studio={studio} />
       <section className="idea-strip" aria-labelledby="idea-title"><span className="idea-icon"><Icon name="leaf" size={23} /></span><div><h2 id="idea-title">A different way to hear the everyday.</h2><p>Start with rain and birds. Bring in leaves, footsteps, flowing water — or an instrumental and vocal from your own song.</p></div><span className="idea-tag">LISTEN. LAYER. CREATE.</span></section>
     </main>
     <footer className="app-footer"><span>naturemix. <span>Sounds from the world. A mix of your own.</span></span><span>Your imported audio stays on this device.</span></footer>
