@@ -1,3 +1,4 @@
+import { DEFAULT_BPM, sequenceMetadata, validBpm } from './sequencerState.js';
 import { clipMetadata } from './clipRegion.js';
 import { MAX_FILE_BYTES, MAX_TRACKS, ROLES, SOUNDS, createTrack } from '../data/sounds.js';
 
@@ -7,7 +8,7 @@ const validRole = (role) => ROLES.some((item) => item.id === role);
 const level = (value, fallback) => Number.isInteger(value) && value >= 0 && value <= 100 ? value : fallback;
 
 export function defaultMix() {
-  return { tracks: SOUNDS.map(createTrack), master: 75 };
+  return { tracks: SOUNDS.map(createTrack), master: 75, bpm: DEFAULT_BPM };
 }
 
 export function validateMix(data) {
@@ -20,7 +21,7 @@ export function validateMix(data) {
     if (!sound && (!item.id.startsWith('custom-') || typeof item.name !== 'string' || !item.name.trim())) continue;
     if (sound && item.id !== sound.id) continue;
     ids.add(item.id);
-    tracks.push({ ...clipMetadata(item), id: item.id, catalogId: sound?.id || null,
+    tracks.push({ ...clipMetadata(item), sequence: sequenceMetadata(item), id: item.id, catalogId: sound?.id || null,
       name: sound?.name || item.name.slice(0, 160),
       role: sound?.role || (validRole(item.role) ? item.role : 'nature'),
       volume: level(item.volume, sound?.volume ?? 50),
@@ -30,7 +31,7 @@ export function validateMix(data) {
     });
     if (tracks.length === MAX_TRACKS) break;
   }
-  return { tracks, master: level(data.master, 75) };
+  return { tracks, master: level(data.master, 75), bpm: validBpm(data.bpm) };
 }
 
 export function loadMix(storage) {
@@ -50,8 +51,8 @@ export function loadMix(storage) {
 }
 
 export function serializeMix(mix) {
-  return { version: 1, master: mix.master, tracks: mix.tracks.map(({ id, catalogId, name, role, volume, muted, solo, loop, clipStart, clipEnd }) =>
-    ({ id, catalogId, name, role, volume, muted, solo, loop, ...clipMetadata({ clipStart, clipEnd }) })) };
+  return { version: 1, master: mix.master, bpm: validBpm(mix.bpm), tracks: mix.tracks.map(({ id, catalogId, name, role, volume, muted, solo, loop, clipStart, clipEnd, sequence }) =>
+    ({ id, catalogId, name, role, volume, muted, solo, loop, ...clipMetadata({ clipStart, clipEnd }), sequence: sequenceMetadata({ sequence }) })) };
 }
 
 export function validateAudioFile(file) {

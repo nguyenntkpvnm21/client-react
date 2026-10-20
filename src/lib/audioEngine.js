@@ -1,3 +1,5 @@
+import { StepScheduler } from './stepScheduler.js';
+import { DEFAULT_BPM, isSequenced, validBpm, stepSeconds } from './sequencerState.js';
 import { clipRegion, validateRegion } from './clipRegion.js';
 import { audibleGain } from './studioState.js';
 
@@ -19,10 +21,13 @@ function waveform(buffer) {
 }
 
 export class AudioEngine {
-  constructor({ createContext, onState = () => {}, onTrack = () => {} } = {}) {
+  constructor({ createContext, onState = () => {}, onTrack = () => {}, onError = () => {} } = {}) {
     this.createContext = createContext || (() => new (window.AudioContext || window.webkitAudioContext)());
     this.onState = onState;
     this.onTrack = onTrack;
+    this.onError = onError;
+    this.bpm = DEFAULT_BPM;
+    this.scheduler = null;
     this.context = null;
     this.buffers = new Map();
     this.pending = new Map();
@@ -38,6 +43,8 @@ export class AudioEngine {
     this.previewRequest = 0;
     this.previewNode = null;
     this.previewId = null;
+    this.sequencePhase = null;
+    this.sequenceTails = null;
   }
 
   ensureContext() {
@@ -65,6 +72,27 @@ export class AudioEngine {
     return this.playing ? Math.max(0, this.context.currentTime - this.anchor) : this.offset;
   }
 
+  isSequencing() { return this.tracks.some(isSequenced); }
+
+  currentStep() { return this.playing && this.scheduler?.running ? Math.floor(Math.max(0, this.scheduler.indexAt(this.context.currentTime)) + 1e-8) % 16 : null; }
+
+  tempoState() {
+    const change = this.scheduler?.running ? this.scheduler.tempoChange : null;
+    return { active: this.scheduler?.running ? (change && this.context.currentTime >= change.when ? change.bpm : this.scheduler.bpm) : this.bpm,
+      pending: change && this.context.currentTime < change.when ? change.bpm : null };
+  }
+
+  setBpm(value) {
+    const next = validBpm(value);
+    if (next === this.bpm) return;
+    this.bpm = next;
+    this.scheduler?.setBpm(next);
+  }
+
+  maybeFinish() {
+    if (this.playing && this.nodes.size === 0 && !this.isSequencing()) this.pause();
+  }
+
   setMaster(value) {
     this.master = value;
     if (this.masterNode) this.masterNode.gain.setTargetAtTime(value / 100, this.context.currentTime, 0.015);
@@ -81,6 +109,7 @@ export class AudioEngine {
   }
 
   startTrack(track, when, offset) {
+    if (isSequenced(track)) return;
     const buffer = this.buffers.get(track.id);
     if (!buffer) return;
     const region = clipRegion(track, buffer.duration);
@@ -100,7 +129,7 @@ export class AudioEngine {
       this.nodes.delete(track.id);
       source.disconnect();
       gain.disconnect();
-      if (this.playing && this.nodes.size === 0) this.pause();
+      this.maybeFinish();
     };
     const position = region.start + (track.loop ? offset % region.length : offset);
     if (track.loop || region.end === buffer.duration) source.start(when, position);
@@ -109,7 +138,10 @@ export class AudioEngine {
 
   setTracks(tracks) {
     this.tracks = tracks;
-    for (const id of this.nodes.keys()) if (!tracks.some((track) => track.id === id)) this.stopNode(id);
+    this.scheduler?.setTracks(tracks);
+    if (this.playing && this.isSequencing() && !this.scheduler?.running) this.startSequencer(this.context.currentTime + 0.03, this.position() + 0.03);
+    if (!this.isSequencing()) this.scheduler?.stop();
+    for (const id of this.nodes.keys()) if (!tracks.some((track) => track.id === id && !isSequenced(track))) this.stopNode(id);
     for (const track of tracks) {
       const node = this.nodes.get(track.id);
       if (node) {
@@ -119,7 +151,7 @@ export class AudioEngine {
         this.startTrack(track, this.context.currentTime + 0.03, this.position() + 0.03);
       }
     }
-    if (this.playing && this.nodes.size === 0) this.pause();
+    this.maybeFinish();
   }
 
   async load(track, file) {
@@ -155,8 +187,9 @@ export class AudioEngine {
     return operation.promise;
   }
 
-  async play(tracks, files, master) {
+  async play(tracks, files, master, bpm = DEFAULT_BPM) {
     this.stopPreview();
+    this.setBpm(bpm);
     const context = this.ensureContext();
     const request = ++this.request;
     this.setTracks(tracks);
@@ -167,12 +200,13 @@ export class AudioEngine {
       await Promise.all(tracks.map((track) => this.load(track, files[track.id])));
       if (this.disposed || request !== this.request) return;
       if (context.state !== 'running') throw new Error('Playback is paused by your browser. Press Play again.');
-      if (!this.tracks.some((track) => track.loop) && this.tracks.every((track) => this.offset >= clipRegion(track, this.buffers.get(track.id).duration).length)) this.offset = 0;
+      if (!this.isSequencing() && !this.tracks.some((track) => track.loop) && this.tracks.every((track) => this.offset >= clipRegion(track, this.buffers.get(track.id).duration).length)) this.offset = 0;
       const when = context.currentTime + 0.06;
       this.anchor = when - this.offset;
       this.playing = true;
       for (const track of this.tracks) this.startTrack(track, when, this.offset);
-      this.onState('playing');
+      if (this.isSequencing()) this.startSequencer(when, this.offset, this.sequencePhase, this.sequenceTails);
+      if (this.playing) this.onState('playing');
     } catch (error) {
       if (this.disposed || request !== this.request) return;
       this.pause();
@@ -180,10 +214,20 @@ export class AudioEngine {
     }
   }
 
+  startSequencer(when, offset, phase = null, tails = null) {
+    this.scheduler ||= new StepScheduler({ context: this.context, output: this.masterNode, buffers: this.buffers,
+      onError: () => { this.pause(); this.onError(new Error('Pattern playback stopped. Press Play to try again.')); } });
+    const sequenceOffset = phase == null ? offset : phase * stepSeconds(this.bpm);
+    this.scheduler.start(this.tracks, this.bpm, when - sequenceOffset, sequenceOffset, tails);
+  }
+
   pause() {
     this.stopPreview();
     this.offset = this.position();
+    this.sequencePhase = this.scheduler?.running ? Math.max(0, this.scheduler.indexAt(this.context.currentTime)) : null;
+    this.sequenceTails = this.scheduler?.running ? this.scheduler.captureTails() : null;
     this.playing = false;
+    this.scheduler?.stop();
     this.request += 1;
     for (const id of [...this.nodes.keys()]) this.stopNode(id);
     if (!this.disposed) this.onState('paused');
@@ -192,11 +236,14 @@ export class AudioEngine {
   restart() {
     this.pause();
     this.offset = 0;
+    this.sequencePhase = 0;
+    this.sequenceTails = null;
   }
 
   forget(id) {
     if (this.previewId === id) this.stopPreview();
     this.stopNode(id);
+    this.scheduler?.remove(id);
     this.pending.get(id)?.controller.abort();
     const buffer = this.buffers.get(id);
     if (buffer) this.memory -= buffer.length * buffer.numberOfChannels * 4;

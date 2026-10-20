@@ -1,3 +1,4 @@
+import { isSequenced } from '../lib/sequencerState.js';
 import ClipEditor from './ClipEditor';
 import { ROLES, SOUNDS } from '../data/sounds.js';
 import { formatTime } from '../lib/studioState.js';
@@ -16,7 +17,7 @@ export default function TrackControl({ track, index, studio }) {
       <div className="track-buttons">
         <button type="button" disabled={studio.projectBusy} aria-label={'Mute ' + track.name} title="Mute" aria-pressed={track.muted} onClick={() => studio.updateTrack(track.id, { muted: !track.muted })}>M</button>
         <button type="button" disabled={studio.projectBusy} aria-label={'Solo ' + track.name} title="Solo" aria-pressed={track.solo} onClick={() => studio.updateTrack(track.id, { solo: !track.solo })}>S</button>
-        <button type="button" disabled={studio.projectBusy} aria-label={'Loop ' + track.name} title="Loop" aria-pressed={track.loop} onClick={() => studio.updateTrack(track.id, { loop: !track.loop })}><Icon name="loop" size={17} /></button>
+        <button type="button" disabled={studio.projectBusy || isSequenced(track)} aria-label={'Loop ' + track.name} title={isSequenced(track) ? 'Sequencer plays one-shot samples' : 'Loop'} aria-pressed={track.loop} onClick={() => studio.updateTrack(track.id, { loop: !track.loop })}><Icon name="loop" size={17} /></button>
         <button className="remove-layer" type="button" aria-label={'Remove ' + track.name} title="Remove layer" disabled={studio.busy} onClick={() => studio.removeTrack(track.id)}><Icon name="trash" size={16} /></button>
       </div>
     </div>
@@ -28,10 +29,10 @@ export default function TrackControl({ track, index, studio }) {
       <label className="track-level"><span className="sr-only">{track.name + ' volume'}</span><input type="range" min="0" max="100" value={track.volume}
         style={{ '--level': track.volume + '%' }} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
     </div>
-    <div className="clip-summary"><button type="button" className="text-button" disabled={studio.busy} aria-expanded={studio.editorId === track.id}
-      onClick={() => studio.editorId === track.id ? studio.closeClip() : studio.openClip(track.id)}>Edit clip</button>
-      <span>{track.clipEnd != null ? track.clipStart.toFixed(2) + '–' + track.clipEnd.toFixed(2) + ' s · ' + (track.loop ? 'Loop region' : 'Play once') : 'Full recording'}</span></div>
-    {studio.editorId === track.id && <ClipEditor key={track.id} track={track} info={info} studio={studio} />}
+    <div className="clip-summary"><button type="button" className="text-button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'mixer'}
+      onClick={() => studio.editorId === track.id && studio.editorLocation === 'mixer' ? studio.closeClip() : studio.openClip(track.id)}>Edit clip</button>
+      <span>{track.clipEnd != null ? track.clipStart.toFixed(2) + '–' + track.clipEnd.toFixed(2) + ' s · ' + (isSequenced(track) ? 'Sequenced sample' : track.loop ? 'Loop region' : 'Play once') : 'Full recording'}</span></div>
+    {studio.editorId === track.id && studio.editorLocation === 'mixer' && <ClipEditor key={track.id} track={track} info={info} studio={studio} />}
     {!track.catalogId && <label className="track-role"><span>Use as</span><select aria-label={track.name + ' role'} disabled={studio.projectBusy} value={track.role}
       onChange={(event) => studio.updateTrack(track.id, { role: event.target.value })}>{ROLES.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>}
   </article>;

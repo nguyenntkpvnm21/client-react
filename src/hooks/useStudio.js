@@ -1,3 +1,4 @@
+import { DEFAULT_BPM, sequenceMetadata, validBpm } from '../lib/sequencerState.js';
 import { validateRegion } from '../lib/clipRegion.js';
 import { useEffect, useRef, useState } from 'react';
 import { MAX_TRACKS, SOUNDS, createTrack } from '../data/sounds.js';
@@ -22,6 +23,9 @@ export default function useStudio() {
   const [mix, setMix] = useState(initialMix);
   const [status, setStatus] = useState('ready');
   const [elapsed, setElapsed] = useState(0);
+  const [currentStep, setCurrentStep] = useState(null);
+  const [tempo, setTempo] = useState({ active: DEFAULT_BPM, pending: null });
+  const [rhythmBusy, setRhythmBusy] = useState(false);
   const [details, setDetails] = useState({});
   const [notice, setNotice] = useState('');
   const [storageNotice, setStorageNotice] = useState('');
@@ -34,6 +38,7 @@ export default function useStudio() {
   const [projectsBlocked, setProjectsBlocked] = useState(false);
   const [savedNotice, setSavedNotice] = useState('');
   const [editorId, setEditorId] = useState(null);
+  const [editorLocation, setEditorLocation] = useState('mixer');
   const [preview, setPreview] = useState(null);
   const engine = useRef(null);
   const files = useRef({});
@@ -47,6 +52,7 @@ export default function useStudio() {
     alive.current = true;
     let canceled = false;
     const player = new AudioEngine({
+      onError: (error) => { if (!canceled) setNotice(error.message); },
       onState: (state) => { if (!canceled) { statusRef.current = state; setStatus(state); } },
       onTrack: (id, metadata) => { if (!canceled) setDetails((previous) => ({ ...previous, [id]: metadata })); },
     });
@@ -83,20 +89,29 @@ export default function useStudio() {
       setBooting(false);
     })();
     const interval = window.setInterval(() => {
-      if (!canceled) { setElapsed(player.position()); setPreview(player.previewPosition()); }
-    }, 250);
+      if (!canceled) { setElapsed(player.position()); setPreview(player.previewPosition()); setCurrentStep(player.currentStep()); setTempo(player.tempoState()); }
+    }, 50);
+    const visibility = () => {
+      if (document.hidden && player.playing && player.isSequencing()) {
+        player.pause();
+        setNotice('Pattern paused while this tab was hidden. Press Play to continue.');
+      }
+    };
+    document.addEventListener('visibilitychange', visibility);
     return () => {
       canceled = true;
       alive.current = false;
       importLock.current = false;
       projectLock.current = false;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', visibility);
       player.dispose();
     };
   }, []);
 
   useEffect(() => {
     mixRef.current = mix;
+    engine.current?.setBpm(mix.bpm ?? DEFAULT_BPM);
     engine.current?.setTracks(withSources(mix.tracks));
     engine.current?.setMaster(mix.master);
   }, [mix]);
@@ -151,9 +166,9 @@ export default function useStudio() {
       setElapsed(engine.current.position());
       return;
     }
-    if (projectLock.current) return;
+    if (projectLock.current || importLock.current) return;
     setNotice('');
-    try { await engine.current.play(withSources(mixRef.current.tracks), files.current, mixRef.current.master); }
+    try { await engine.current.play(withSources(mixRef.current.tracks), files.current, mixRef.current.master, mixRef.current.bpm); }
     catch (error) { if (alive.current) setNotice(error.message); }
   }
 
@@ -285,9 +300,63 @@ export default function useStudio() {
     }
   }
 
+  function editPattern(id, change) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
+    const track = mixRef.current.tracks.find((item) => item.id === id);
+    if (!track) return;
+    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((item) => item.id === id
+      ? { ...item, sequence: change(sequenceMetadata(item)) } : item) }));
+    setNotice('');
+  }
+
+  function setBpm(value) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
+    const bpm = validBpm(value);
+    if (bpm === (mixRef.current.bpm ?? DEFAULT_BPM)) return;
+    setMix((previous) => ({ ...previous, bpm }));
+    setNotice('');
+  }
+
+  async function createRhythm(id) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
+    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    if (!track) return;
+    importLock.current = true;
+    setRhythmBusy(true);
+    setNotice('');
+    try {
+      await engine.current.ensureContext().resume();
+      const buffer = await engine.current.load(track, files.current[id]);
+      if (!alive.current) return;
+      const next = { ...mixRef.current, tracks: mixRef.current.tracks.map((item) => item.id === id ? {
+        ...item, muted: false, volume: item.volume || 50,
+        solo: mixRef.current.tracks.some((layer) => layer.solo) || item.solo,
+        ...(item.clipEnd == null ? { clipStart: 0, clipEnd: Math.min(.18, buffer.duration) } : {}),
+        sequence: { enabled: true, steps: Array.from({ length: 16 }, (_, index) => index % 4 === 0) },
+      } : item) };
+      changeMix(next);
+      engine.current.setTracks(withSources(next.tracks));
+      if (!engine.current.playing) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm);
+      if (!next.master) setNotice('Your rhythm is ready. Raise Master volume to hear it.');
+    } catch (error) { if (alive.current) setNotice(error.message); }
+    finally { importLock.current = false; if (alive.current) setRhythmBusy(false); }
+  }
+
+  async function previewSample(id) {
+    if (preview?.id === id) { stopPreview(); return; }
+    if (projectLock.current || importLock.current || booting) return;
+    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    if (!track) return;
+    try {
+      const buffer = await engine.current.load(track, files.current[id]);
+      if (!alive.current || !mixRef.current.tracks.some((item) => item.id === id)) return;
+      await previewClip(id, track.clipStart || 0, track.clipEnd ?? buffer.duration, false);
+    } catch (error) { if (alive.current) setNotice(error.message); }
+  }
+
   function resetLevels() {
     if (projectLock.current) return;
-    setMix((previous) => ({ master: 75, tracks: previous.tracks.map((track) => ({ ...track,
+    setMix((previous) => ({ ...previous, master: 75, tracks: previous.tracks.map((track) => ({ ...track,
       volume: SOUNDS.find((sound) => sound.id === track.catalogId)?.volume ?? 50, muted: false, solo: false })) }));
   }
 
@@ -307,10 +376,11 @@ export default function useStudio() {
     setEditorId(null);
   }
 
-  async function openClip(id) {
+  async function openClip(id, location = 'mixer') {
     if (projectLock.current || importLock.current || booting) return;
     stopPreview();
     setEditorId(id);
+    setEditorLocation(location);
     setNotice('');
     const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
     if (!track) return;
@@ -342,10 +412,15 @@ export default function useStudio() {
 
   const activeProject = savedMixes.find((project) => project.id === activeProjectId);
   const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
-  return { ...mix, status, elapsed, details, notice, storageNotice, booting, importing,
+  return { ...mix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
     savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
-    editorId, preview, openClip, closeClip, previewClip, stopPreview, applyClip,
-    busy: booting || importing || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
+    editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm,
+    busy: booting || importing || rhythmBusy || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
+    setBpm,
+    setSequenced: (id, enabled) => editPattern(id, (sequence) => ({ ...sequence, enabled })),
+    toggleStep: (id, index) => { if (Number.isInteger(index) && index >= 0 && index < 16) editPattern(id, (sequence) => ({ ...sequence, steps: sequence.steps.map((on, step) => step === index ? !on : on) })); },
+    quarterSteps: (id) => editPattern(id, (sequence) => ({ ...sequence, steps: Array.from({ length: 16 }, (_, index) => index % 4 === 0) })),
+    clearSteps: (id) => editPattern(id, (sequence) => ({ ...sequence, steps: Array(16).fill(false) })),
     addSound, importFiles, removeTrack, resetLevels, applyBlend,
     saveMix: (name) => projectAction('save', { id: 'mix-' + crypto.randomUUID(), name }),
     updateSavedMix: () => activeProject && projectAction('update', { id: activeProject.id }),
