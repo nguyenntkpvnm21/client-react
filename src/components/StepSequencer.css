@@ -79,3 +79,10 @@
 .normal-clip-context { font-size: 11px; line-height: 1.7; color: #c0d6ca; margin-top: 12px; }
 .normal-clip-context a { color: #9df0cc; text-decoration: underline; }
 .sequence-window { margin: 0 0 10px; }
+.sequence-tools button[aria-pressed=true] { border-color: #8cdeb1 !important; color: #baf1d4 !important; }
+.sequence-row-footer .pattern-preview-button { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.sequence-row-footer > span { flex: 1; min-width: min(100%, 220px); }
+.rhythm-options { margin-top: 16px; border-top: 1px solid #304b3e; }
+.rhythm-options > summary { color: #aac9b7; font-size: 12px; padding: 12px 0; min-height: 44px; cursor: pointer; }
+.rhythm-options .pattern-audition { padding-bottom: 0; }
+.rhythm-options .sequencer-help { margin-top: 10px; }

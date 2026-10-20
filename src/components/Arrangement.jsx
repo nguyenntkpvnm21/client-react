@@ -57,7 +57,11 @@ function ArrangementRow({ track, studio, cursor, snap }) {
   function done() { setEditing(false); editButton.current?.focus(); }
   return <article className={'arrangement-row ' + track.role + (active ? ' is-active' : '')} aria-label={track.name + ' arrangement'}>
     <div className="arrangement-row-heading"><div><h3 title={track.name}>{track.name}</h3><span>{isSequenced(track) ? 'Rhythm pattern' : track.loop ? 'Looping layer' : 'One-shot layer'}</span></div>
-      <button type="button" ref={editButton} aria-label={'Edit timing for ' + track.name} aria-expanded={editing} disabled={studio.busy} onClick={() => editing ? done() : setEditing(true)}>{editing ? 'Close timing' : 'Edit timing'}</button></div>
+      <div className="arrangement-row-controls">
+        <button type="button" aria-label={'Solo ' + track.name + ' in arrangement'} aria-pressed={track.solo} disabled={studio.projectBusy} onClick={() => studio.updateTrack(track.id, { solo: !track.solo })}>Solo</button>
+        <button type="button" aria-label={'Mute ' + track.name + ' in arrangement'} aria-pressed={track.muted} disabled={studio.projectBusy} onClick={() => studio.updateTrack(track.id, { muted: !track.muted })}>{track.muted ? 'Unmute' : 'Mute'}</button>
+        <button type="button" ref={editButton} aria-label={'Edit timing for ' + track.name} aria-expanded={editing} disabled={studio.busy} onClick={() => editing ? done() : setEditing(true)}>{editing ? 'Close timing' : 'Edit timing'}</button>
+      </div></div>
     <TimelineClip track={track} studio={studio} window={window} cursor={cursor} snap={snap} />
     <div className="timeline-row-tools">{!isSequenced(track) && <label><input type="checkbox" checked={track.loop} disabled={studio.busy} onChange={(event) => studio.updateTrack(track.id, { loop: event.target.checked })} aria-label={'Loop ' + track.name + ' selected clip'} />Loop selected clip</label>}
       {!studio.details[track.id] && <button type="button" disabled={loading || studio.busy} onClick={async () => { setLoading(true); try { await studio.loadTrackInfo(track.id); } finally { setLoading(false); } }}>{loading ? 'Loading waveform…' : 'Load waveform'}</button>}
@@ -65,6 +69,32 @@ function ArrangementRow({ track, studio, cursor, snap }) {
     </div>
     {editing && <TimingForm key={JSON.stringify(track.placement) + '-' + duration} track={track} studio={studio} onDone={done} />}
   </article>;
+}
+
+function TimeRuler({ studio }) {
+  const duration = studio.arrangement.duration;
+  const position = studio.arrangement.enabled ? Math.min(duration, studio.elapsed) : 0;
+  const disabled = studio.booting || studio.importing || studio.projectBusy || !studio.tracks.length;
+  function key(event) {
+    let next;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = position - (event.shiftKey ? .01 : 1);
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = position + (event.shiftKey ? .01 : 1);
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = duration;
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault();if (!disabled) void studio.seekArrangement(position);return; }
+    if (next === undefined) return;
+    event.preventDefault();
+    if (!disabled) void studio.seekArrangement(Math.max(0, Math.min(next, duration)), false);
+  }
+  return <>
+    <p className="arrangement-seek-help" id="arrangement-seek-help">Click the time ruler to play from there. Arrow keys move the position; Enter plays.</p>
+    <div className="arrangement-ruler" role="slider" tabIndex={disabled ? -1 : 0} aria-label="Arrangement play from position" aria-describedby="arrangement-seek-help"
+      aria-disabled={disabled} aria-valuemin={0} aria-valuemax={duration} aria-valuenow={Number(position.toFixed(2))} aria-valuetext={position.toFixed(2) + ' seconds'} onKeyDown={key}
+      onClick={(event) => { if (disabled) return;event.currentTarget.focus();const box = event.currentTarget.getBoundingClientRect();void studio.seekArrangement(Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * duration); }}>
+      {[0, .25, .5, .75, 1].map((fraction) => <span key={fraction} aria-hidden="true">{Number((duration * fraction).toFixed(2))}s</span>)}
+      <span className="ruler-playhead" style={{ left: position / duration * 100 + '%' }} aria-hidden="true" />
+    </div>
+  </>;
 }
 
 export default function Arrangement({ studio }) {
@@ -87,7 +117,9 @@ export default function Arrangement({ studio }) {
         <output aria-label="Arrangement playback position">{formatTime(studio.arrangement.enabled ? studio.elapsed : 0)} / {formatTime(duration)}</output>
         <span>{studio.arrangement.enabled && studio.status === 'finished' ? 'Finished. Play again from the beginning.' : 'Playback stops at the composition end.'}</span></div></div>
     <div className="timeline-instructions"><p id="timeline-help">Drag a clip to move it. Bottom handles trim Entry/Exit; top handles adjust fades. Release applies timing and keeps playback in place. Arrow keys move handles; Shift makes fine adjustments.</p><label><input type="checkbox" checked={snap} onChange={(event) => setSnap(event.target.checked)} />Snap to beats ({studio.bpm} BPM)</label></div>
-    <div className="arrangement-ruler" aria-hidden="true">{[0, .25, .5, .75, 1].map((fraction) => <span key={fraction}>{Number((duration * fraction).toFixed(2))}s</span>)}</div>
+    <div className="arrangement-listen-tools"><span>Solo isolates selected layers in this mix. Muted layers stay silent until you unmute them.</span>
+      {studio.tracks.some((track) => track.solo) && <button type="button" disabled={studio.projectBusy} onClick={studio.clearSolos}>Clear solos</button>}</div>
+    <TimeRuler studio={studio} />
     <div className="arrangement-layers">{studio.tracks.map((track) => <ArrangementRow key={track.id} track={track} studio={studio} cursor={cursor} snap={snap} />)}
       {!studio.tracks.length && <p className="arrangement-help">Add a sound in the studio to start arranging.</p>}</div>
     {error && <p className="arrangement-error" role="alert">{error}</p>}

@@ -81,3 +81,13 @@
   .timeline-clip-wrap, .timeline-row-tools { grid-column: 1; grid-row: auto; }
   .timeline-move span { font-size: 10px; }
 }
+.arrangement-row-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+.arrangement-row-controls button { padding: 8px 10px; font-size: 12px; }
+.arrangement-row-controls button[aria-pressed=true] { background: #8cdeb1; border-color: #b0f5d0; color: #10251a; }
+.arrangement-listen-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 10px; }
+.arrangement-listen-tools > span, .arrangement-seek-help { color: #b7cebf; font-size: 12px; line-height: 1.7; }
+.arrangement-seek-help { margin: 14px 0 8px; }
+.arrangement-ruler { position: relative; min-height: 48px; padding: 12px 8px; margin-bottom: 8px; cursor: pointer; border: 1px solid #466351; border-radius: 7px; background: #152a20; touch-action: manipulation; user-select: none; }
+.arrangement-ruler > span { pointer-events: none; }
+.arrangement-ruler[aria-disabled=true] { opacity: .45; cursor: default; }
+.arrangement-ruler .ruler-playhead { position: absolute; width: 2px; top: 0; bottom: 0; background: #d0ffe6; transform: translateX(-1px); }

@@ -308,7 +308,7 @@ export default function useStudio() {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
     const track = mixRef.current.tracks.find((item) => item.id === id);
     if (!track) return;
-    stopPreview();
+    if (engine.current.previewPosition()?.loading) stopPreview();
     setMix((previous) => ({ ...previous, tracks: previous.tracks.map((item) => item.id === id
       ? { ...item, rhythm: { ...rhythmMetadata(item), initialized: true }, sequence: change(sequenceMetadata(item)) } : item) }));
     setNotice('');
@@ -341,7 +341,7 @@ export default function useStudio() {
       } : item) };
       changeMix(next);
       engine.current.setTracks(withSources(next.tracks));
-      if (!engine.current.playing) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
+      if (first && !engine.current.playing) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
       if (!next.master) setNotice('Your rhythm is ready. Raise Master volume to hear it.');
     } catch (error) { if (alive.current) setNotice(error.message); }
     finally { importLock.current = false; if (alive.current) setRhythmBusy(false); }
@@ -454,6 +454,26 @@ export default function useStudio() {
     catch (error) { if (alive.current) setNotice(error.message); }
   }
 
+  async function seekArrangement(value, play = true) {
+    if (projectLock.current || importLock.current || booting) return;
+    const current = mixRef.current;
+    try {
+      const duration = validateLength(current.arrangement.duration, current.tracks);
+      const next = { ...current, arrangement: { enabled: true, duration } };
+      engine.current.pause();
+      engine.current.setArrangement(next.arrangement);
+      const position = engine.current.seek(value);
+      changeMix(next);
+      setElapsed(position);setCurrentStep(null);setPreview(null);setNotice('');
+      if (play && position < duration) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
+    } catch (error) { if (alive.current) setNotice(error.message); }
+  }
+
+  function clearSolos() {
+    if (projectLock.current) return;
+    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => ({ ...track, solo: false })) }));
+  }
+
   function freeMix() {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
     engine.current.restart();
@@ -487,7 +507,7 @@ export default function useStudio() {
 
   const activeProject = savedMixes.find((project) => project.id === activeProjectId);
   const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
-  return { ...mix, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
+  return { ...mix, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
     savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
     editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm,
     busy: booting || importing || rhythmBusy || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,

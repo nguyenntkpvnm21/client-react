@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 95 tests. No additional testing dependency is required.
+The automated suite has 111 tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -92,8 +92,8 @@ recording itself is shorter. The editor changes a draft until Apply range or Use
 this sample. Applying resets the shared playback position. Closing or navigating
 away discards the draft.
 
-Listen auditions the stored rhythm sample once. Preview clip auditions an editor
-draft. Both pause the mix and use a separate 40% audition gain, bypassing layer
+Hear sample inside Edit sample auditions the draft once. Preview clip does the
+same for a normal clip draft. Both pause the mix and use a separate 40% audition gain, bypassing layer
 mute/solo and Master. Stopping preview never automatically resumes the mix.
 
 ## Rhythm and pattern audition
@@ -104,18 +104,27 @@ does not divide a source recording into four different slices.
 
 - Create rhythm initializes steps 1, 5, 9 and 13 only on first creation. If no
   sample was selected, it starts with up to 0.18 seconds from the recording.
-- Enable rhythm restores the stored pattern and sample, including a deliberately
-  cleared pattern. Use normal playback preserves them for later.
-- Four beats changes only the pattern. Clear leaves it intentionally silent.
+- Rhythm on/off controls whether the row contributes its pattern or normal clip
+  to the full mix. Turning it on again restores the stored sample and steps,
+  including an intentionally empty pattern. Re-enabling a stopped row does not
+  start the mix automatically. First-time Create rhythm still starts playback.
+- Initialized rows keep their grid visible and editable while off in the mix.
+- Pattern options contains Four beats, Clear steps and Sample tails. Four beats
+  replaces only the steps; Clear leaves them intentionally empty. Less-used
+  controls stay collapsed until needed.
 - Step edits remain live. BPM changes apply at the next loop boundary. Normal
   ambience and music are not time-stretched or tempo-matched.
 
-**Preview pattern** auditions one row independently: one sixteen-step loop, then
+**Hear rhythm** sits beside each grid and auditions one row independently: one sixteen-step loop, then
 any remaining ringing tails. It uses the current BPM, pauses and preserves the
 mix position, bypasses mute/solo/Master and ignores Arrangement windows. The row
-shows preview progress. Stop preview, editing the pattern/sample/tail policy or
-speed, navigation, project opening, removal, hidden-tab handling and disposal
-cancel pending/scheduled preview audio. A cleared pattern has no preview hits.
+shows preview progress. Step edits during an active audition update upcoming hits
+without stopping it or restarting the loop. Already passed steps are heard on the
+next audition. Editing during loading cancels that stale pending audition.
+Stop preview, sample/tail-policy/speed changes, navigation, project opening,
+removal, hidden-tab handling and disposal cancel pending/scheduled audition audio.
+A cleared pattern has no preview hits. Play full mix remains a distinct shared
+playback action; Hear sample is available inside the sample editor.
 
 ### Sample tails
 
@@ -125,8 +134,8 @@ cancel pending/scheduled preview audio. A cleared pattern has no preview hits.
   through its source end, still respecting Arrangement exit.
 
 At 120 BPM, Four beats starts a sample every 0.5 seconds. A four-second selection
-is cut to roughly 0.5 seconds per hit in Cut mode. The row reports selection
-length and the shortest hit spacing instead of hiding that truncation. Choose a
+is cut to roughly 0.5 seconds per hit in Cut mode. Pattern options flags this
+truncation in its summary and explains selection length and hit spacing inside. Choose a
 shorter sound visually, space hits apart or select Let samples ring.
 
 There are at most 32 simultaneous ringing voices per row; unusually dense/long
@@ -170,6 +179,21 @@ modes. Rhythm shows Arrangement is on, each row's Entry/Exit and Switch to Free
 mix. Free mix stops/resets playback and disables timeline limits while retaining
 all timing and fade settings for reuse.
 
+Click/tap the time ruler to enable Arrangement and play from that time. Arrow
+keys select a position and pause, Shift makes 0.01-second adjustments, Home/End
+select the start/end and Enter/Space plays. Selecting the composition end finishes
+without jumping back to zero. Changing position cancels pending loading requests,
+old sources, rhythm hits and completion timers before rebuilding at the chosen
+time. Local source offsets, fades, rhythm phase and Entry/Exit limits still apply.
+The playback position is temporary and is not included in saved snapshots.
+
+Every Arrangement row has Solo and Mute/Unmute controls, using the same saved
+controls as Studio. Solo isolates selected layers while preserving their timings
+and fades; it does not restart sources or move the playhead. Multiple solos are
+allowed. A muted solo remains silent until unmuted. Clear solos restores the mix
+without changing mute or volume settings. Use Solo and the time ruler together
+to listen to the entrance, exit or fade you are editing.
+
 There is currently one placement per layer. Multiple clips on one track, source
 slip editing, drag duplication, effects and rendered audio export are not added.
 
@@ -196,16 +220,23 @@ Saved mixes contain configurations, not a rendered WAV/MP3 file.
 
 ## Verification
 
-The 95 tests cover migration, separate regions, clear/enable preservation,
+The 111 tests cover migration, separate regions, clear/enable preservation,
 selection bounds and stereo detection, timeline bounds/snap/fades, mono/ringing
 scheduling, bounded overlaps, finite isolated previews, cancellation, future
 entries, source offsets, pause/resume across tempo changes, finite completion,
-live controls, snapshots, shared audio references and source cleanup.
+live controls, snapshots, shared audio references and source cleanup. New cases
+cover seeks into fades, silence before/after a window, rhythm phase/tails,
+canceling stale decodes, clean end-of-timeline selection, Solo/Mute routing,
+live finite-audition edits and migration of nested sequence sample bounds.
 
 Browser checks exercise mouse and touch waveform selection, canceled gestures,
 zoom and beat-length shortcuts, cut/ring auditions, keyboard timeline controls,
 source-end/Loop feedback, independent regions, saving/reload and responsive
 layouts at 320, 390, 768, 1024 and 1440 pixels.
+
+The listening-flow browser check also exercised ruler mouse/keyboard playback,
+Solo/Mute/Clear without source restarts, live rhythm audition edits, off-row editing,
+collapsed pattern options, independent samples and save/reload without autoplay.
 
 ## Source responsibilities
 

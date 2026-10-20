@@ -173,3 +173,39 @@ test('live rhythmic timing edits rebuild the affected window and gate future hit
  context.currentTime = .5;scheduler.tick();assert.equal(sources.length, 1);
  context.currentTime = 1;scheduler.tick();const next = sources.at(-1).starts[0];close(next[0], 1.06);close(next[2], 1);scheduler.stop();
 });
+
+test('editing a finite rhythm audition replaces queued hits without stopping the preview or changing its position', async () => {
+ const {context,engine,sources}=setup();
+ const row=track({sequence:{enabled:false,steps:steps(0,1)}});
+ await engine.previewPattern(row,file,120);
+ const preview=engine.patternPreview;
+ context.currentTime=.1;preview.scheduler.tick();
+ const queued=sources.find((source)=>Math.abs(source.starts[0][0]-.155)<1e-8);assert.ok(queued);
+ const edited={...row,sequence:{enabled:false,steps:steps(0,2)}};
+ engine.setTracks([edited]);
+ assert.equal(engine.patternPreview,preview);assert.equal(queued.disconnected,true);
+ context.currentTime=.2;preview.scheduler.tick();
+ assert.ok(sources.some((source)=>Math.abs(source.starts[0][0]-.28)<1e-8&&!source.disconnected));
+ assert.equal(preview.scheduler.maxSteps,16);assert.equal(preview.gain.gain.value,.4);
+ assert.equal(edited.sequence.enabled,false);engine.dispose();
+});
+
+test('audition edits extend ringing tail duration and seeking cancels isolated audition nodes', async () => {
+ const {context,engine}=setup();
+ const row=track({rhythm:{...track().rhythm,tailMode:'ring'},sequence:{enabled:true,steps:steps(0)}});
+ await engine.previewPattern(row,file,120);
+ context.currentTime=.1;
+ engine.setTracks([{...row,sequence:{enabled:true,steps:steps(0,15)}}]);
+ close(engine.patternPreview.end, .03+1.875+4);
+ engine.setArrangement({enabled:true,duration:10});engine.seek(3);
+ assert.equal(engine.patternPreview,null);assert.equal(engine.previewPosition(),null);close(engine.position(),3);
+ engine.dispose();
+});
+
+test('nested sample saves migrate into the current rhythm representation without reverting to the normal clip', () => {
+ const old=track({rhythm:undefined,sequence:{enabled:false,initialized:true,steps:steps(),sample:{clipStart:2,clipEnd:2.25}}});
+ const restored=validateMix(serializeMix({master:70,tracks:[old]})).tracks[0];
+ assert.deepEqual(rhythmRegion(restored,10),{start:2,end:2.25,length:.25});
+ assert.equal(restored.clipStart,6);assert.equal(restored.clipEnd,9);
+ assert.equal(enableRhythmTrack(restored,10).sequence.steps.some(Boolean),false);
+});

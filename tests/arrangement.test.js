@@ -167,3 +167,75 @@ test('canceling a delayed decode cannot schedule entries or a finish callback la
   await new Promise((resolve) => queueMicrotask(resolve));engine.pause();finish(audio);await pending;
   assert.equal(sources.length, 0);assert.equal(engine.finishTimer, null);engine.dispose();
 });
+
+test('seeking cancels old sources and resumes the correct source offset and fade at the chosen time', async () => {
+  const { context, engine, sources } = setup();
+  await engine.play([track()], { rain: file }, 75, 120, config);
+  context.currentTime = 1;const old = sources[0];
+  close(engine.seek(4.75), 4.75);
+  assert.equal(old.stops, 1);assert.equal(engine.finishTimer, null);
+  assert.equal(engine.sequencePhase, null);assert.equal(engine.sequenceTails, null);
+  await engine.play([track()], { rain: file }, 75, 120, config);
+  close(sources.at(-1).starts[0][1], 4.75);close(sources.at(-1).starts[0][2], .25);
+  close(engine.nodes.get('rain').envelope.gain.events[0][1], .5);
+  assert.equal(engine.playing, true);engine.dispose();
+});
+
+test('seeking before entry preserves its remaining delay and seeking after exit keeps only the composition clock', async () => {
+  const { engine, sources } = setup();
+  engine.setArrangement(config);engine.seek(1);
+  await engine.play([track()], { rain: file }, 75, 120, config);
+  close(sources[0].starts[0][0], 1.06);close(sources[0].starts[0][1], 2);
+  const count = sources.length;engine.seek(5.5);
+  await engine.play([track()], { rain: file }, 75, 120, config);
+  assert.equal(sources.length, count);assert.equal(engine.playing, true);
+  close(engine.position(), 5.5 - .06);engine.dispose();
+});
+
+test('seeking resets rhythmic phase to the target timeline and restores only the appropriate sample tail', async () => {
+  const { context, engine } = setup();
+  const row = track({ placement: { start: 0, end: 6, fadeIn: 0, fadeOut: 0 },
+    rhythm: { initialized: true, sampleStart: 1, sampleEnd: 2, tailMode: 'cut' },
+    sequence: { enabled: true, steps: steps(0, 4, 8, 12) } });
+  await engine.play([row], { rain: file }, 75, 120, config);
+  context.currentTime = 1;engine.seek(3.25);
+  assert.equal(engine.scheduler.voices.size, 0);
+  await engine.play([row], { rain: file }, 75, 120, config);
+  context.currentTime += .06;assert.equal(engine.currentStep(), 10);
+  const voice = [...engine.scheduler.voices][0];
+  close(voice.source.starts[0][1], 1.25);close(voice.source.starts[0][2], .25);
+  engine.dispose();
+});
+
+test('seeking while audio loads cancels the older request without duplicate playback', async () => {
+  const { context, engine, sources } = setup();let finish;
+  context.decodeAudioData = () => new Promise((resolve) => { finish = resolve; });
+  const first = engine.play([track()], { rain: file }, 75, 120, config);
+  await new Promise((resolve) => queueMicrotask(resolve));
+  engine.seek(3);
+  const latest = engine.play([track()], { rain: file }, 75, 120, config);
+  finish(audio);await Promise.all([first, latest]);
+  assert.equal(sources.length, 1);close(sources[0].starts[0][1], 3);assert.equal(engine.playing, true);
+  engine.dispose();
+});
+
+test('seeking to the end stops cleanly; invalid positions do not interrupt playback', async () => {
+  const { engine, sources } = setup();const states=[];engine.onState=(state)=>states.push(state);
+  await engine.play([track()], { rain: file }, 75, 120, config);
+  for (const value of [NaN, Infinity, '3']) assert.throws(() => engine.seek(value));
+  assert.equal(engine.playing, true);assert.equal(sources[0].stops, 0);
+  assert.equal(engine.seek(100), 6);assert.equal(engine.playing, false);assert.equal(states.at(-1), 'finished');
+  assert.equal(engine.seek(-5), 0);assert.equal(engine.finishTimer, null);engine.dispose();
+});
+
+test('Solo, Mute and clearing solos change only routing without restarting arrangement sources or fades', async () => {
+  const { engine, sources } = setup();const rain=track(), birds=track({id:'birds', name:'Birds'});
+  await engine.play([rain,birds], {rain:file,birds:file}, 75, 120, config);
+  const envelope=engine.nodes.get('rain').envelope;const events=[...envelope.gain.events];
+  engine.setTracks([{...rain,solo:true},birds]);
+  assert.equal(engine.nodes.get('rain').gain.gain.value,.6);assert.equal(engine.nodes.get('birds').gain.gain.value,0);
+  engine.setTracks([{...rain,solo:true,muted:true},birds]);assert.equal(engine.nodes.get('rain').gain.gain.value,0);
+  engine.setTracks([rain,birds]);assert.equal(engine.nodes.get('birds').gain.gain.value,.6);
+  assert.equal(sources.length,2);assert.equal(sources.every((source)=>source.stops===0),true);
+  assert.deepEqual(envelope.gain.events,events);engine.dispose();
+});

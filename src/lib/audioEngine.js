@@ -8,6 +8,20 @@ import { audibleGain } from './studioState.js';
 
 const MEMORY_LIMIT = 512 * 1024 * 1024;
 
+function auditionTrack(track) { return { ...track, volume: 100, muted: false, solo: false, sequence: { ...track.sequence, enabled: true } }; }
+function auditionDuration(track, buffer, bpm) {
+  const seconds = stepSeconds(bpm), bar = seconds * 16;
+  const steps = track.sequence.steps;
+  const region = rhythmRegion(track, buffer.duration);
+  let duration = bar;
+  for (let index = 0; index < 16; index += 1) if (steps[index]) {
+    let gap = 1;
+    while (gap < 16 && !steps[(index + gap) % 16]) gap += 1;
+    duration = Math.max(duration, index * seconds + (rhythmMetadata(track).tailMode === 'ring' ? region.length : Math.min(region.length, gap * seconds)));
+  }
+  return duration;
+}
+
 function waveform(buffer) {
   const samples = buffer.getChannelData(0);
   const peaks = [];
@@ -199,6 +213,15 @@ export class AudioEngine {
       }
     }
     this.maybeFinish();
+    if (this.patternPreview) {
+      const pattern = this.patternPreview;
+      const track = tracks.find((item) => item.id === pattern.id);
+      if (!track) this.stopPreview();
+      else {
+        pattern.end = pattern.when + auditionDuration(track, this.buffers.get(track.id), pattern.bpm);
+        pattern.scheduler.setTracks([auditionTrack(track)]);
+      }
+    }
   }
 
   async load(track, file) {
@@ -299,6 +322,16 @@ export class AudioEngine {
     this.sequenceTails = null;
   }
 
+  seek(value) {
+    if (!Number.isFinite(value)) throw new Error('Choose a valid playback position in seconds.');
+    this.pause(); // Cancels old decode requests, queued hits and completion timers.
+    this.offset = Math.max(0, Math.min(value, this.arrangement.enabled ? this.arrangement.duration : Infinity));
+    this.sequencePhase = null;
+    this.sequenceTails = null;
+    if (this.arrangement.enabled && this.offset === this.arrangement.duration) this.onState('finished');
+    return this.offset;
+  }
+
   forget(id) {
     if (this.previewId === id) this.stopPreview();
     this.stopNode(id);
@@ -365,23 +398,16 @@ export class AudioEngine {
     const steps = track.sequence.steps;
     if (!steps.some(Boolean)) { this.stopPreview(); return; }
     const seconds = stepSeconds(bpm), bar = seconds * 16;
-    const region = rhythmRegion(track, buffer.duration);
-    const ring = rhythmMetadata(track).tailMode === 'ring';
-    let duration = bar;
-    for (let index = 0; index < 16; index += 1) if (steps[index]) {
-      let gap = 1;
-      while (gap < 16 && !steps[(index + gap) % 16]) gap += 1;
-      duration = Math.max(duration, index * seconds + (ring ? region.length : Math.min(region.length, gap * seconds)));
-    }
+    const duration = auditionDuration(track, buffer, bpm);
     const gain = context.createGain();
     gain.gain.value = .4;
     gain.connect(this.compressor);
     const scheduler = new StepScheduler({ context, output: gain, buffers: this.buffers,
       onError: () => { this.stopPreview(); this.onError(new Error('Pattern preview stopped. Try again.')); } });
     const when = context.currentTime + .03;
-    const pattern = { id: track.id, gain, scheduler, when, seconds, bar, end: when + duration, timer: null };
+    const pattern = { id: track.id, gain, scheduler, when, seconds, bar, bpm, end: when + duration, timer: null };
     this.patternPreview = pattern;
-    scheduler.start([{ ...track, volume: 100, muted: false, solo: false, sequence: { ...track.sequence, enabled: true } }], validBpm(bpm), when, 0, [], { maxSteps: 16 });
+    scheduler.start([auditionTrack(track)], validBpm(bpm), when, 0, [], { maxSteps: 16 });
     if (this.patternPreview !== pattern) return;
     pattern.timer = globalThis.setInterval(() => { if (context.currentTime >= pattern.end) this.stopPreview(); }, 25);
     pattern.timer?.unref?.();

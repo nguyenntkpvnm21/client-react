@@ -41,9 +41,9 @@ function RegionControls({ track, info, studio, location }) {
     {error ? <p className="clip-error" id={uid + '-error'} role="alert">{error}</p> : <p className="clip-duration">Selected: {(bounds.clipEnd - bounds.clipStart).toFixed(3)} seconds</p>}
     {location !== 'sequencer' && <label className="clip-loop"><input type="checkbox" checked={loop} disabled={disabled} onChange={(event) => change(setLoop, event.target.checked)} />Loop selected region</label>}
     <div className="clip-actions">
-      <button type="button" disabled={disabled || !!error} onClick={audition}>{preview || previewBusy ? 'Stop preview' : 'Preview clip'}</button>
+      <button type="button" disabled={disabled || !!error} onClick={audition}>{preview || previewBusy ? 'Stop preview' : location === 'sequencer' ? 'Hear sample' : 'Preview clip'}</button>
       <button type="button" className="clip-apply" disabled={disabled || !!error} onClick={() => studio.applyClip(track.id, bounds.clipStart, bounds.clipEnd, loop, false, location)}>{location === 'sequencer' ? 'Use this sample' : 'Apply range'}</button>
-      <button type="button" disabled={disabled} onClick={() => studio.applyClip(track.id, 0, info.duration, track.loop, true, location)}>Reset clip</button>
+      <button type="button" disabled={disabled} onClick={() => studio.applyClip(track.id, 0, info.duration, track.loop, true, location)}>{location === 'sequencer' ? 'Use full recording' : 'Reset clip'}</button>
     </div>
     {isSequenced(track) && location !== 'sequencer' && <p className="clip-help">Rhythm is enabled. Normal clip edits are heard after choosing Use normal playback in Rhythm.</p>}
     <p className="clip-help">Preview plays this layer alone at 40% volume. Applying a range stops the mix and returns it to the beginning. The original file stays intact.</p>
