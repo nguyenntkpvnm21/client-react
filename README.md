@@ -1,314 +1,252 @@
 # NatureMix
 
-A personal creative audio studio built with React and Vite. Layer real nature recordings with music, instrumentals, vocals, and your own sounds.
+A personal audio studio built with React, Vite and Web Audio. Layer real nature
+recordings with music, instrumentals, vocals and your own sounds. The interface
+uses a dark emerald theme and English labels.
 
-NatureMix is the current working name. This is a personal web homework project, developed independently of the StemForge group project.
+This is an independent personal project. StemForge audio outputs can be imported
+as files; there is no direct separation API connection.
 
-## Current features
+## Run and check
 
-- Dark emerald interface with mint highlights, subtle category colors, and responsive layouts.
-- Included Rain, Birds, and Music recordings, with search and category filters.
-- Dynamic mixer with up to eight layers.
-- Multiple local file import with Nature, Music / instrumental, and Vocal roles.
-- Independent volume, mute, solo, loop, track removal, and master volume.
-- Balanced, Rainfall, and Birdsong base blends.
-- Web Audio playback with a common scheduled start and timeline position.
-- Play, Pause, and Restart; pause excludes paused time.
-- Waveform summaries calculated from actual decoded audio.
-- Nondestructive clip selection with isolated Preview, selected-region looping, and Reset clip.
-- A 16-step sequencer with 40–240 BPM, per-layer patterns, Four beats, and Clear.
-- Shared playback of sequenced samples and normal ambience/stem layers.
-- Mixer settings saved locally, including track membership and role.
-- Imported audio stored in IndexedDB and restored after reload.
-- Up to 20 named saved mixes, with Open, Save changes, Rename, and Delete.
-- Saved snapshots include BPM, patterns and clip bounds, and share imported recordings without duplicating audio files.
-- Opening a saved mix restores its layers/controls and stops playback at the beginning.
-- English errors for missing, unsupported, invalid, oversized, and unavailable audio.
-- Existing mixer levels/mute migrate from the previous settings key.
-- The earlier Focus/Break dashboard is no longer rendered.
+Use a Node.js version supported by the installed Vite version (the current
+lockfile requires Node 20.19+ or Node 22.12+).
 
-Wind, leaves, streams, and animals are not bundled yet. Import real recordings to use those sounds.
-
-## Run locally
-
-Use a Node.js version supported by the installed Vite version. The current lockfile requires Node 20.19+ or Node 22.12+.
-
-1. Clone the repository.
-2. Run npm install if dependencies are not installed.
-3. Run npm run dev.
-4. Open the Local URL printed by Vite.
-
-Commands:
-
+    npm install
     npm run dev
-    npm run lint
     npm run test
+    npm run lint
     npm run build
-    npm run preview
 
-The test script runs 57 tests across tests/studio.test.js, tests/audioEngine.test.js, tests/savedMixes.test.js, tests/clips.test.js and tests/sequencer.test.js. It does not require another testing dependency.
+The automated suite has 95 tests. No additional testing dependency is required.
 
-## Included audio
+## Four pages, one workspace
 
-The user-supplied assets remain in:
-
-    public/audio/rain.mp3
-    public/audio/birds.mp3
-    public/audio/music.mp3
-
-Their public URLs are /audio/rain.mp3, /audio/birds.mp3, and /audio/music.mp3.
-
-| Asset | Source and permission/license |
+| Page | Purpose |
 | --- | --- |
-| Rain | To be recorded |
-| Birds | To be recorded |
-| Music | To be recorded |
+| `#/studio` | Import recordings, browse sounds, balance layers and edit normal clips. |
+| `#/rhythm` | Choose rhythm samples, edit steps and audition individual patterns. |
+| `#/arrangement` | Arrange tracks on a shared timeline with entry, exit and fades. |
+| `#/saved-mixes` | Save, open, update, rename and delete named snapshots. |
 
-Do not invent asset credits. Document the actual recordings before the final presentation.
+Only the selected page is rendered; the audio engine, current mix and shared
+transport stay mounted. Navigation preserves mix playback and closes isolated
+previews and sample editors. Leaving an editor discards its unapplied draft.
 
-## Importing custom audio
+Hash navigation supports direct links, reload and browser Back/Forward without
+server rewrites. Legacy `#studio`, `#rhythm`, `#arrangement` and `#saved-mixes`
+links still work. Empty, unknown and `#my-sounds` links open Studio. Pages have
+one h1, an active navigation link, a distinct document title and main focus.
 
-Choose an import role, click Import audio, and select one or more files. Each file is validated and decoded before it becomes a mixer layer.
+## Studio and importing
 
-- Up to eight total layers.
-- Up to 30 MiB per file and 15 minutes per recording.
-- Formats depend on browser decoding support; common MP3, WAV, OGG, FLAC, and M4A files are accepted for decoding.
-- Nature imports loop by default. Music/instrumental and vocal imports do not.
-- Changing a role does not automatically change an existing loop setting.
-- Removing a custom layer releases its stored audio only when no saved mix or current workspace uses it. The original file on the user's computer is not modified.
-- Reload restores the saved mix but never automatically starts playback.
-- The transport position resets on reload; this version saves settings/files, not the position across visits.
+- Included recordings: Rain, Birds and Music, with search/category filters.
+- Up to eight layers, including imported files.
+- Up to 30 MiB per file and 15 minutes per recording, with a 512 MiB decoded-audio
+  budget for the workspace. Browser decoding support determines accepted formats.
+- Nature imports loop by default; Music/instrumental and Vocal imports do not.
+  The included Music layer has its own looping default. Changing role does not
+  silently change an existing Loop setting.
+- Independent volume, mute, solo and Loop; shared Master. Muted solo layers stay
+  silent. Multiple Solo selections are allowed.
+- Balanced, Rainfall and Birdsong adjust included layer levels. Reset levels
+  keeps clips, rhythm samples, patterns and timing settings.
+- Roles categorize files; they do not separate vocals or identify audio content.
 
-Import is local browser processing, not a cloud upload. Clearing browser site data removes saved files/settings. Localhost and Vercel have separate storage; data does not synchronize across browsers or devices.
+Imported files stay in this browser; no audio is uploaded to a server. Removing
+or editing a layer never changes its original file on disk.
 
-If browser storage fails, the interface explains that files/settings may only remain available in the current tab. Keep the original recordings.
+## Normal clips and rhythm samples
 
-## Saved mixes
+Every layer has independent source regions:
 
-1. Enter a Mix name and choose Save as new.
-2. Adjust your workspace. Unsaved changes means the named snapshot has not been updated; the current workspace still uses its usual auto-save behavior.
-3. Choose Save changes to replace the opened mix's snapshot, or Save as new to keep another variation.
-4. Choose Open to restore a saved snapshot. Confirm replacement when the workspace has edits; Cancel keeps the workspace. Successful opening stops playback and resets the transport to zero. Press Play explicitly.
-5. Rename changes the saved name only; it does not save current mixer edits.
-6. Delete removes the saved entry. The current workspace remains open and becomes unnamed when its saved entry is deleted.
+- **Edit normal clip** in Studio chooses the source for normal playback.
+- **Edit sample** in Rhythm chooses the source repeated by rhythm hits.
 
-Names must be nonempty and at most 60 characters; repeated whitespace is normalized. Names are unique without regard to letter case. The limit is 20 mixes, including empty workspaces.
+Applying or resetting either region preserves the other. A layer uses one of
+these playback paths at a time. Studio explains when Rhythm is currently active.
+Old single-region workspaces retain their audible sample during migration; a
+normal region overwritten by an older version cannot be inferred or recovered.
 
-Each snapshot includes ordered layer IDs, roles, levels, mute/solo, loop, and master volume. Snapshots do not include rendered audio, waveform buffers, or temporary URLs. This feature saves configurations, not an exported audio file.
+### Selecting audio without typing fractions
 
-Project records use the mixes store in IndexedDB database naturemix-audio-v1, schema version 2. The upgrade preserves the existing files store and imported recordings. The current workspace keeps naturemix-studio-v1 and an optional projectId; its previous schema remains readable.
+The editor loads actual decoded samples and offers:
 
-A recording used by several snapshots is stored once. Removing a layer, replacing a snapshot, or deleting a saved entry reclaims a stored file only after its final saved/current-workspace reference is gone. Opening another workspace releases unused decoded buffers. Persistent reference checks and project writes use transactions across the files and mixes stores.
+1. Drag across the large waveform to select a region.
+2. Drag the highlighted region to move it without changing its length.
+3. Drag either edge to trim. Edge handles also support arrow keys; Shift makes
+   smaller adjustments.
+4. Zoom in/out, Show selection, Full recording, pan buttons and a full-recording
+   overview to move through long recordings. Zoom regenerates waveform detail
+   from that visible portion, including both stereo channels.
+5. Rhythm duration shortcuts: quarter beat, one beat, two beats, one bar and two
+   bars at the current BPM. These resize the draft; they do not change tempo or
+   stretch the source recording.
+6. Find next sound moves the draft to a later audible region, wrapping to the
+   first detected region when necessary. Detection uses signal amplitude and can
+   select noise or an imperfect onset; always audition it before applying.
+7. Exact Start/End fields and sliders remain under an expandable section.
 
-Failed saves do not create a successful-looking entry. A saved mix with missing audio cannot replace the current workspace; its stored snapshot is kept. Unreadable/invalid saved collections are preserved and edits to them are disabled until the problem is resolved. Cleanup retains files if workspace/project storage cannot be read safely.
+Selections are nondestructive and must be at least 0.05 seconds, unless the
+recording itself is shorter. The editor changes a draft until Apply range or Use
+this sample. Applying resets the shared playback position. Closing or navigating
+away discards the draft.
 
-Saved mixes are local to this browser profile and website origin. Localhost and Vercel are separate; there is no cloud or multi-device synchronization.
+Listen auditions the stored rhythm sample once. Preview clip auditions an editor
+draft. Both pause the mix and use a separate 40% audition gain, bypassing layer
+mute/solo and Master. Stopping preview never automatically resumes the mix.
 
-## Playback behavior
+## Rhythm and pattern audition
 
-The engine uses one AudioContext and schedules loaded sources at a shared audio-clock time and offset. Matching stems should come from the same separation result and preserve the same source timeline.
+A loop contains four beats and sixteen steps. BPM is an integer from 40 to 240,
+defaulting to 100. A lit step starts the selected rhythm sample again; Four beats
+does not divide a source recording into four different slices.
 
-This aligns playback timing. It does not detect BPM, match musical key, remove leading silence, time-stretch audio, or correct errors in a separation output.
+- Create rhythm initializes steps 1, 5, 9 and 13 only on first creation. If no
+  sample was selected, it starts with up to 0.18 seconds from the recording.
+- Enable rhythm restores the stored pattern and sample, including a deliberately
+  cleared pattern. Use normal playback preserves them for later.
+- Four beats changes only the pattern. Clear leaves it intentionally silent.
+- Step edits remain live. BPM changes apply at the next loop boundary. Normal
+  ambience and music are not time-stretched or tempo-matched.
 
-- Independent nature loops wrap at their own recording duration.
-- Non-looping music and vocal layers stop at their end; looping nature layers can continue.
-- A layer added during playback joins at the current timeline position. Restart starts every layer from the beginning.
-- Volume/mute/solo/master adjustments do not recreate active sources.
-- Solo selects audible layers, but an explicitly muted solo layer remains silent.
-- Master volume zero intentionally plays silently.
-- A canceled loading request cannot later start playback.
-- Pause stops all active source nodes; Resume creates sources at the saved in-visit offset.
-- A compressor reduces excessive summed peaks. It is not a mastering or loudness-normalization tool.
-- A 512 MiB decoded-audio budget prevents an excessively large working mix. Decoded audio can be much larger than the source files.
-- Missing or undecodable audio prevents startup and displays an error; a retry is available.
-- StrictMode and unmount cleanup must not create duplicate playback.
+**Preview pattern** auditions one row independently: one sixteen-step loop, then
+any remaining ringing tails. It uses the current BPM, pauses and preserves the
+mix position, bypasses mute/solo/Master and ignores Arrangement windows. The row
+shows preview progress. Stop preview, editing the pattern/sample/tail policy or
+speed, navigation, project opening, removal, hidden-tab handling and disposal
+cancel pending/scheduled preview audio. A cleared pattern has no preview hits.
 
-## Source responsibilities
+### Sample tails
 
-- src/App.jsx and src/App.css: studio composition and layout.
-- src/components/SoundLibrary.jsx: actual included catalog/search.
-- src/components/AudioImport.jsx: local import.
-- src/components/SavedMixes.jsx and SavedMixes.css: named snapshot controls and responsive styling.
-- src/components/MixWorkspace.jsx: blends, mixer, transport, and master controls.
-- src/components/TrackControl.jsx: layer controls and waveform summaries.
-- src/components/ClipEditor.jsx and ClipEditor.css: waveform region selection and isolated audition.
-- src/components/StepSequencer.jsx and StepSequencer.css: tempo, per-layer steps and keyboard grid controls.
-- src/components/Icon.jsx: SVG icons.
-- src/data/sounds.js: catalog and import limits.
-- src/hooks/useStudio.js: UI state, persistence, import, and audio lifecycle.
-- src/lib/audioEngine.js: decoded audio, routing, scheduling, and cleanup.
-- src/lib/clipRegion.js: clip validation and effective source bounds.
-- src/lib/sequencerState.js: pattern validation, tempo limits and grid math.
-- src/lib/stepScheduler.js: audio-clock hit scheduling, sample envelopes and cleanup.
-- src/lib/audioStorage.js: local audio/project storage, atomic reference checks, and cleanup.
-- src/lib/savedMixes.js: snapshot validation, names, limits, dirty checks, and references.
-- src/lib/studioState.js: validation, settings migration, and serialization.
+- **Cut at next hit** preserves legacy monophonic behavior. A hit stops at the
+  next lit step on the same row, its source end or Arrangement exit.
+- **Let samples ring** allows overlapping tails and plays each selected sample
+  through its source end, still respecting Arrangement exit.
 
-Legacy focus/mixer source files may remain in an existing checkout, but the new App does not import the old dashboard. Existing focus history is not erased.
+At 120 BPM, Four beats starts a sample every 0.5 seconds. A four-second selection
+is cut to roughly 0.5 seconds per hit in Cut mode. The row reports selection
+length and the shortest hit spacing instead of hiding that truncation. Choose a
+shorter sound visually, space hits apart or select Let samples ring.
+
+There are at most 32 simultaneous ringing voices per row; unusually dense/long
+patterns warn that older tails may be cut. Small source-boundary fades reduce
+clicks. This is not automatic mastering, beat detection or phrase slicing.
+
+The scheduler refills a 120 ms queue every 25 ms and uses the audio clock for
+onsets. Live edits cancel/rebuild upcoming hits. Tempo changes replace future
+hits at the bar boundary. Pause/resume preserves rhythmic phase and overlapping
+tail source offsets, including across tempo changes. Late callbacks skip missed
+steps rather than playing a backlog. Pattern playback pauses in a hidden tab.
+
+## Arrangement timeline
+
+Arrangement length is 1–300 seconds, default 30. Each layer has one timing window.
+All rows share a time axis; overlapping windows play together.
+
+- Drag the middle of a clip to move it while preserving its length.
+- Drag the bottom Entry/Exit handles to resize the timing window.
+- Drag top handles for Fade in/out. Arrow keys work on all controls; Shift gives
+  fine adjustments. Snap to beats can be switched off.
+- During dragging, a temporary draft is shown. Release validates and applies
+  once at the current playback position; other layers and the shared clock keep
+  running. Only the affected normal source or rhythmic envelope/voices are rebuilt. A canceled gesture does not apply.
+- Edit timing retains numeric fields for exact values. Entry must precede Exit
+  by at least 0.05 seconds, inside the composition; fades must fit that window.
+- Load waveform decodes a row without starting playback. Normal tracks show
+  source waveform detail; rhythm tracks show their grid hits.
+- Normal rows expose Loop selected clip directly. A one-shot shorter than its
+  window has a hatched silent remainder and an explicit source-end message.
+
+A 55-second normal clip in a 70-second window ends at 55 seconds with Loop off;
+with Loop on, it repeats the selected region for the remaining 15 seconds. Merely
+increasing composition length never turns Loop on or stretches a recording.
+One-shot fades fit their audible source duration. Rhythm hits stay on the shared
+grid and cannot ring beyond Exit.
+
+Play arrangement enables the finite timeline; playback stops automatically at
+its end. Shared Play resumes in the current mode. Switching pages does not switch
+modes. Rhythm shows Arrangement is on, each row's Entry/Exit and Switch to Free
+mix. Free mix stops/resets playback and disables timeline limits while retaining
+all timing and fade settings for reuse.
+
+There is currently one placement per layer. Multiple clips on one track, source
+slip editing, drag duplication, effects and rendered audio export are not added.
+
+## Saved mixes and browser storage
+
+Current workspace settings auto-save in localStorage. Imported recordings and up
+to twenty named snapshots use IndexedDB (`naturemix-audio-v1`, schema 2). Mix
+names are nonempty, at most sixty characters and unique without regard to case.
+
+- Save as new creates a snapshot of current layers, levels, normal clips, rhythm
+  samples, tail policy, patterns, tempo, arrangement mode, timing and fades.
+- Save changes updates the opened snapshot. Auto-saving the current workspace
+  does not silently update a named snapshot.
+- Open confirms replacement when appropriate, stops playback and restores at
+  zero. Rename does not save current edits. Delete keeps the current workspace.
+- Audio files are shared by reference between snapshots. Cleanup only reclaims
+  an imported recording after its final saved/current reference is gone.
+- Reload restores saved files/settings but not playback position and never
+  autoplays. Localhost, Vercel, different browsers and devices have separate
+  storage. There is no account or cloud synchronization.
+- Missing/corrupt audio or unavailable storage displays a notice; keep originals.
+
+Saved mixes contain configurations, not a rendered WAV/MP3 file.
 
 ## Verification
 
-Automated tests cover settings migration, malformed storage, duplicate IDs, metadata serialization, file validation, mute/solo, common scheduling, pause/resume, live controls, canceled decoding, retry, source cleanup, old completion events, recording duration, and decoded-memory limits. Saved mix tests cover snapshots, names, collisions, update/rename identity, collection limits, shared audio references, corrupt records, missing IDs, and dirty detection.
+The 95 tests cover migration, separate regions, clear/enable preservation,
+selection bounds and stereo detection, timeline bounds/snap/fades, mono/ringing
+scheduling, bounded overlaps, finite isolated previews, cancellation, future
+entries, source offsets, pause/resume across tempo changes, finite completion,
+live controls, snapshots, shared audio references and source cleanup.
 
-Manual checks:
+Browser checks exercise mouse and touch waveform selection, canceled gestures,
+zoom and beat-length shortcuts, cut/ring auditions, keyboard timeline controls,
+source-end/Loop feedback, independent regions, saving/reload and responsive
+layouts at 320, 390, 768, 1024 and 1440 pixels.
 
-1. Play the included mix.
-2. Adjust volume, mute, solo, loop, and master.
-3. Pause; confirm the position remains still. Resume and Restart.
-4. Import an instrumental and vocal, then Restart and Play.
-5. Reload; confirm custom files, track roles, and levels restore.
-6. Remove a custom layer; reload and confirm it stays removed.
-7. Try an invalid file and confirm an actionable error.
-8. Remove every layer; verify the empty workspace and disabled Play.
-9. Add a catalog sound again.
-10. Save two named mixes containing the same imported recording; verify no duplicate stored file.
-11. Change controls, cancel opening another mix, then confirm opening and check that playback stops at zero.
-12. Rename without saving edits; verify the snapshot is unchanged.
-13. Remove a custom layer, then reopen a saved mix using it; verify audio remains available.
-14. Save changes and delete a mix; verify other mixes/current-workspace recordings remain usable.
-15. Reload and check names, snapshots, active mix, and audio.
-16. Check desktop/mobile layout and keyboard focus.
+## Source responsibilities
 
-## StemForge workflow
+- App.jsx and StudioPages.css: four-page shell and persistent transport layout.
+- hooks/useStudio.js: shared state, actions, persistence and engine lifecycle.
+- components/ClipEditor.jsx and WaveformSelector.jsx: draft region editing.
+- components/StepSequencer.jsx: rhythm controls, audition and tail feedback.
+- components/Arrangement.jsx and TimelineClip.jsx: shared timeline interactions.
+- lib/audioEngine.js: decoded buffers, normal playback and isolated auditions.
+- lib/stepScheduler.js: scheduled rhythm voices and queued tempo changes.
+- lib/rhythmState.js: independent sample metadata, initialization and tail policy.
+- lib/audioSelection.js: selection geometry, detailed waveform and sound finding.
+- lib/timelineEditing.js and arrangementState.js: validated window editing/fades.
+- lib/studioState.js, savedMixes.js and audioStorage.js: serialization and storage.
 
-The intended workflow is to separate a favorite song on the group project, download its instrumental/vocal outputs, and import them here. Verify the actual group-project separation/export capability when running the full demonstration.
+## Source handoff
 
-There is no direct API connection between these two sites in this release. Matching downloadable audio files are the integration boundary.
+This update is based on main `884bb0a` plus the delivered four-page/Arrangement
+source. The subsequently reported 82-test local revision was not available on
+GitHub; its described independent-region and preserved-pattern behavior has
+been implemented here and checked with the expanded suite. Commit local work
+before applying this source bundle on a new branch, and review any additional
+local changes rather than discarding them. For the first review, run
+`npm run dev -- --port 5174` so the existing browser data at port 5173 stays
+separate; compatibility with the unavailable local revision cannot be verified.
 
-## Next milestones
+## Included audio and deployment
 
-- Clip arrangement, fades, and selected effects.
-- Defined-duration audio rendering/export.
-- More real catalog recordings and documented credits.
-- Optional cloud persistence if multi-device access becomes useful.
+Actual recordings remain at public/audio/rain.mp3, birds.mp3 and music.mp3. Wind,
+leaves, streams and other animals are not bundled; import recordings to use them.
 
-## Deployments
+| Recording | Source and permission/license |
+| --- | --- |
+| Rain | To be documented |
+| Birds | To be documented |
+| Music | To be documented |
+
+Do not invent credits; document the actual recordings before presentation.
 
 - Frontend: https://client-react-indol.vercel.app/
-- Client repository: https://github.com/nguyenntkpvnm21/client-react
-- Existing personal API: https://server-api-1-4i16.onrender.com/
+- Repository: https://github.com/nguyenntkpvnm21/client-react
 
-This release runs in the frontend. It does not call the garden API or implement server uploads, accounts, or stem separation.
-
-
-## Nondestructive audio clips
-
-Each layer has **Edit clip**. Opening it loads the waveform without starting playback.
-Choose Start and End using the sliders or numeric fields in seconds. The highlighted
-waveform shows the draft selection; at least 0.05 seconds is required unless the
-recording itself is shorter. The waveform is an overview of decoded samples, not a
-sample-level zoom editor.
-
-- **Preview clip** pauses the mix and auditions only this draft at a fixed 40% gain,
-  independent of the layer's mute/solo/volume and the master setting. **Stop preview**,
-  changing the draft, closing the editor, playing the mix, removing the layer, or
-  opening another saved mix cancels it.
-- **Loop selected region** repeats this selection. Otherwise it plays once.
-- **Apply range** commits the start/end/loop settings, stops playback, and resets the
-  common mix position to zero. Each layer's selected start becomes its timeline zero.
-- **Reset clip** restores the original recording without changing its file. Reset
-  levels and Base blends preserve clip settings.
-- Clip settings survive reload and are included in named mixes. Use **Save changes**
-  to update a named mix explicitly. Old saved mixes default to full recordings.
-- Cropped non-looping layers stop at their selected end; looped layers wrap within
-  their region during pause/resume. Changing Loop on an applied crop stops/resets
-  the mix. Volume, mute, solo and master changes keep playing sources in place.
-
-For related beat/vocal files, use the same source start on both layers if they must
-remain aligned. Region looping does not detect tempo or match beats. The step sequencer described below adds rhythmic triggering. Effects, arrangement
-and rendered audio export remain future features.
-
-### Clip verification
-
-`npm run test` runs 57 tests covering the existing studio and saved mixes, region
-validation, compatibility, stored bounds, scheduled one-shots/loops, pause/resume,
-preview isolation/cancellation and source cleanup. Also run `npm run lint` and
-`npm run build`.
-
-For a manual check, select a short Birds region, preview once and looped, apply it,
-play/pause/resume, save a named mix, change the range, reopen the saved mix, and
-reload. Confirm that Reset clip restores the full recording and that the original
-file has not changed.
-
-
-## Step sequencer
-
-The wide **Make a rhythm** area sits below the mixer and keeps each sound's sample
-editor, audition controls and pattern together. A loop has four beats and sixteen
-steps. Playback is shared with the normal ambience/music layers and master control.
-
-1. Choose **Create rhythm** on a sound. It creates hits on steps 1, 5, 9 and 13 and
-   starts the mix. If no clip was selected, it uses the first 0.18 seconds (or the
-   entire recording when shorter). Existing selected clips are preserved. The row
-   is unmuted and a zero layer level is raised to 50%; an existing solo selection
-   also includes this row. Master volume is preserved.
-2. **Edit sample** opens the waveform inside that row. Select a range and choose
-   **Use this sample**. The editor closes and keyboard focus returns to that row's
-   Edit sample button. Applying a sample still stops/resets the shared transport.
-3. **Listen** auditions the selected sample once and pauses the mix. The inline
-   editor's Preview also auditions once; the normal layer's Loop setting is kept.
-4. Press **Play rhythm & mix** beside the grid. Toggle steps while listening;
-   edits cancel/rebuild upcoming hits without stopping the mix or continuous layers.
-   **Four beats** restores the starter pattern; **Clear** leaves that row silent
-   once its current sample tail ends. **Use normal playback** restores continuous
-   playback using the layer's current clip and Loop settings.
-5. Enter a whole-number speed from **40 to 240 BPM**, then choose **Set speed**.
-   During playback the new speed starts at the next loop; a notice shows the
-   current and pending BPM. Further changes replace the pending speed. Returning
-   to the current speed cancels the pending change. BPM changes trigger timing,
-   without stretching recordings or changing the continuous layers' timeline.
-6. **Save your mix** links to the existing named-mix controls. Save as new or Save
-   changes includes BPM, patterns, clips and mixer levels. Reload restores these
-   values without starting audio automatically.
-
-Each hit plays its sample once. The next hit on the same row cuts the previous tail;
-short clips can finish sooner. Small boundary fades reduce clicks. Mute, Solo,
-layer volume and Master still apply. A silent source recording remains silent;
-Edit sample lets you choose another part of it.
-
-### Timing and lifecycle
-
-A timer refills a 120 ms queue every 25 ms, while AudioContext time determines
-onsets. Live pattern edits cancel queued sources and rebuild upcoming hits. Tempo
-changes use a boundary on the existing grid, cancel any queued hits at or after
-that boundary, and schedule the replacement grid without doubling sources.
-Late timer callbacks skip missed steps rather than playing a backlog.
-
-Pause releases scheduled nodes and stores both rhythmic phase and the actual
-sample offset of an audible tail. Resume keeps that phase and tail, including a
-tail that began before a tempo transition. If paused before a pending speed change,
-Resume uses the chosen speed immediately at the saved phase. Restart resets both
-rhythm and continuous layers to the beginning.
-
-Sample application, project opening and Restart retain their reset behavior.
-Listen/Preview pauses the mix; closing an editor does not automatically resume it.
-Removing a layer, opening a project, disposal and scheduling failures release
-voices, gains and timers. Sequenced playback pauses when the tab is hidden or the
-audio context is interrupted. Return and press Play to continue.
-
-Old workspaces and saved mixes default to 100 BPM with normal playback on every
-row. Existing audio files and snapshots are not duplicated.
-
-### Keyboard and responsive layout
-
-Tab reaches Create rhythm, Edit sample, Listen and each step. Enter/Space toggles
-a step; Left/Right moves between steps and Home/End moves to the first/last step.
-Desktop shows four beat groups across; intermediate widths show two groups per
-line. Phones stack all four beat groups, each with four large step buttons. There
-is no horizontal grid scrolling. Step targets are at least 44 by 44 CSS pixels at
-the checked widths: 320, 390, 768, 1024 and 1440 pixels.
-
-### Verification
-
-The 57-test suite covers the existing mixer, clips and saved mixes plus queued-hit
-cancellation, live mode changes, loop-boundary tempo replacement/cancellation,
-phase/tail restoration across speed changes and failure cleanup. Run npm run test,
-npm run lint and npm run build.
-
-Chrome headless checks also exercised Create rhythm and playback, live step edits,
-queued BPM changes, inline sample editing and focus return, Listen, named saving,
-reload without autoplay and the responsive widths above. These are implementation
-checks; listening quality and ease of use still benefit from user testing.
-
-Arrangement, effects, song tempo detection and rendered audio export remain outside
-this iteration.
+This release runs in the frontend and does not call the garden API, implement
+accounts, upload recordings to a server or perform stem separation.

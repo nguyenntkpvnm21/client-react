@@ -30,8 +30,9 @@ export default function TrackControl({ track, index, studio }) {
         style={{ '--level': track.volume + '%' }} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
     </div>
     <div className="clip-summary"><button type="button" className="text-button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'mixer'}
-      onClick={() => studio.editorId === track.id && studio.editorLocation === 'mixer' ? studio.closeClip() : studio.openClip(track.id)}>Edit clip</button>
+      onClick={() => studio.editorId === track.id && studio.editorLocation === 'mixer' ? studio.closeClip() : studio.openClip(track.id)}>Edit normal clip</button>
       <span>{track.clipEnd != null ? track.clipStart.toFixed(2) + '–' + track.clipEnd.toFixed(2) + ' s · ' + (isSequenced(track) ? 'Sequenced sample' : track.loop ? 'Loop region' : 'Play once') : 'Full recording'}</span></div>
+    {isSequenced(track) && <p className="normal-clip-context">Using the rhythm sample. <a href="#/rhythm">Edit in Rhythm</a>; normal clip settings are kept for normal playback.</p>}
     {studio.editorId === track.id && studio.editorLocation === 'mixer' && <ClipEditor key={track.id} track={track} info={info} studio={studio} />}
     {!track.catalogId && <label className="track-role"><span>Use as</span><select aria-label={track.name + ' role'} disabled={studio.projectBusy} value={track.role}
       onChange={(event) => studio.updateTrack(track.id, { role: event.target.value })}>{ROLES.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>}

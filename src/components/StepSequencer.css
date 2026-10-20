@@ -66,3 +66,16 @@
   .sequence-beat-groups { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .sequence-steps button { min-height: 48px; }
 }
+.pattern-audition { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 0 16px; }
+.pattern-audition button, .rhythm-arrangement-banner button { min-height: 44px; padding: 10px 14px; background: #244c3c; color: #d6f9e8; border: 1px solid #679f83; border-radius: 8px; font-size: 12px; }
+.pattern-audition label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #bedccc; }
+.pattern-audition select { min-height: 44px; min-width: 0; max-width: 100%; font-size: 12px; background: #0d211a; border: 1px solid #55836c; border-radius: 7px; padding: 8px; color: #d9f4e5; }
+.pattern-audition > span, .sequence-window { color: #b6d1c1; font-size: 11px; line-height: 1.7; }
+.sample-tail-warning { color: #ead1a8; background: #6b481719; border: 1px solid #8a734940; border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.7; margin: 0 0 14px; }
+.rhythm-arrangement-banner { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 14px; margin-top: 20px; background: #b9a2ed0b; border: 1px solid #a999c644; border-radius: 10px; padding: 16px; }
+.rhythm-arrangement-banner > div { flex: 1; min-width: min(100%, 220px); }
+.rhythm-arrangement-banner strong { color: #d5c6f2; font-size: 14px; }
+.rhythm-arrangement-banner p { font-size: 12px; line-height: 1.7; margin-top: 7px; color: #c1bace; }
+.normal-clip-context { font-size: 11px; line-height: 1.7; color: #c0d6ca; margin-top: 12px; }
+.normal-clip-context a { color: #9df0cc; text-decoration: underline; }
+.sequence-window { margin: 0 0 10px; }

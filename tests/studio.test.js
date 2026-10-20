@@ -12,7 +12,7 @@ test('existing mixer levels and mute migrate without changing track identities',
 });
 
 test('saved mixes preserve an empty workspace and reject bad values and duplicate IDs', () => {
-  assert.deepEqual(validateMix({ version: 1, tracks: [], master: 0 }), { tracks: [], master: 0, bpm: 100 });
+  assert.deepEqual(validateMix({ version: 1, tracks: [], master: 0 }), { tracks: [], master: 0, bpm: 100, arrangement: { enabled: false, duration: 30 } });
   const state = validateMix({ version: 1, master: 900, tracks: [
     { id: 'rain', catalogId: 'rain', name: 'Bad rename', volume: -7, muted: 'yes' },
     { id: 'rain', catalogId: 'rain', volume: 99 },

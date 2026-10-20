@@ -1,3 +1,5 @@
+import { clipMetadata, clipRegion } from './clipRegion.js';
+
 export const STEP_COUNT = 16;
 export const DEFAULT_BPM = 100;
 export const MIN_BPM = 40;
@@ -11,8 +13,25 @@ export function sequenceMetadata(track) {
   const sequence = track?.sequence;
   const valid = Array.isArray(sequence?.steps) && sequence.steps.length === STEP_COUNT
     && sequence.steps.every((step) => typeof step === 'boolean');
-  return { enabled: valid && sequence.enabled === true,
-    steps: valid ? [...sequence.steps] : Array(STEP_COUNT).fill(false) };
+  const steps = valid ? [...sequence.steps] : Array(STEP_COUNT).fill(false);
+  const initialized = valid && (sequence.initialized === true || sequence.enabled === true || steps.some(Boolean));
+  // Older mixes shared the normal clip with the rhythm. Keep that selection in both
+  // slots on migration; its original pre-rhythm range cannot be reconstructed.
+  const sample = valid && sequence.sample != null ? clipMetadata(sequence.sample)
+    : initialized ? clipMetadata(track) : null;
+  return { enabled: valid && sequence.enabled === true, initialized, steps, sample };
+}
+
+export function rhythmSample(track) { return sequenceMetadata(track).sample ?? clipMetadata(track); }
+export function rhythmRegion(track, duration) { return clipRegion(rhythmSample(track), duration); }
+
+export function enableRhythmTrack(track, duration) {
+  const sequence = sequenceMetadata(track);
+  if (sequence.initialized) return { ...track, sequence: { ...sequence, enabled: true } };
+  const normal = clipMetadata(track);
+  const sample = sequence.sample ?? (normal.clipEnd !== null ? normal : { clipStart: 0, clipEnd: Math.min(.18, duration) });
+  return { ...track, sequence: { enabled: true, initialized: true, sample,
+    steps: Array.from({ length: STEP_COUNT }, (_, index) => index % 4 === 0) } };
 }
 
 export function isSequenced(track) { return sequenceMetadata(track).enabled; }

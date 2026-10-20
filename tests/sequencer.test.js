@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AudioEngine } from '../src/lib/audioEngine.js';
 import { StepScheduler } from '../src/lib/stepScheduler.js';
-import { DEFAULT_BPM, nextHitGap, patternStep, sequenceMetadata, stepSeconds, validBpm } from '../src/lib/sequencerState.js';
+import { DEFAULT_BPM, enableRhythmTrack, nextHitGap, patternStep, rhythmRegion, sequenceMetadata, stepSeconds, validBpm } from '../src/lib/sequencerState.js';
 import { defaultMix, loadMix, serializeMix, validateMix } from '../src/lib/studioState.js';
 import { changeProject, sameMix } from '../src/lib/savedMixes.js';
 
@@ -39,11 +39,102 @@ test('BPM validation and grid math define sixteen sixteenth notes per 4/4 bar', 
 
 test('invalid sequence metadata falls back to normal playback and valid disabled patterns retain their steps', () => {
   for (const sequence of [undefined, { enabled: true, steps: [true] }, { enabled: true, steps: Array(16).fill(1) }]) {
-    assert.deepEqual(sequenceMetadata({ sequence }), { enabled: false, steps: Array(16).fill(false) });
+    assert.deepEqual(sequenceMetadata({ sequence }), { enabled: false, initialized: false, steps: Array(16).fill(false), sample: null });
   }
   const stored = { enabled: false, steps: steps(2, 8) };
   const copy = sequenceMetadata({ sequence: stored }); copy.steps[2] = false;
   assert.equal(stored.steps[2], true); assert.equal(copy.enabled, false);
+});
+
+test('first creation seeds four beats in a separate sample without changing the normal clip or loop', () => {
+  const full = track({ sequence: undefined, clipStart: 0, clipEnd: null });
+  const created = enableRhythmTrack(full, 10);
+  assert.deepEqual(created.sequence.steps, steps(0, 4, 8, 12));
+  assert.deepEqual(created.sequence.sample, { clipStart: 0, clipEnd: .18 });
+  assert.equal(created.sequence.initialized, true);assert.equal(created.clipEnd, null);
+  assert.equal(created.clipStart, 0);assert.equal(created.loop, full.loop);assert.equal(full.sequence, undefined);
+  const cropped = track({ sequence: undefined, clipStart: 2, clipEnd: 5, loop: false });
+  const seeded = enableRhythmTrack(cropped, 10);
+  assert.deepEqual(seeded.sequence.sample, { clipStart: 2, clipEnd: 5 });
+  assert.equal(seeded.clipStart, 2);assert.equal(seeded.clipEnd, 5);assert.equal(seeded.loop, false);
+  const tiny = enableRhythmTrack(full, .0248);
+  assert.deepEqual(tiny.sequence.sample, { clipStart: 0, clipEnd: .0248 });assert.equal(tiny.clipEnd, null);
+});
+
+test('disabling and enabling an edited rhythm preserves steps, both clip regions and mixer controls', () => {
+  const edited = track({ clipStart: 1, clipEnd: 8, muted: true, volume: 0, solo: true,
+    sequence: { enabled: false, initialized: true, steps: steps(2, 6, 15), sample: { clipStart: 4, clipEnd: 4.4 } } });
+  const enabled = enableRhythmTrack(edited, 10);
+  assert.deepEqual(enabled.sequence.steps, steps(2, 6, 15));
+  assert.deepEqual(enabled.sequence.sample, edited.sequence.sample);
+  assert.notEqual(enabled.sequence.sample, edited.sequence.sample);
+  assert.equal(enabled.clipStart, 1);assert.equal(enabled.clipEnd, 8);
+  assert.equal(enabled.muted, true);assert.equal(enabled.volume, 0);assert.equal(enabled.solo, true);
+  enabled.sequence.steps[2] = false;assert.equal(edited.sequence.steps[2], true);
+});
+
+test('a cleared disabled rhythm stays empty after snapshot save, reload and re-enabling', () => {
+  const empty = track({ sequence: { enabled: false, initialized: true, steps: steps(), sample: { clipStart: 3, clipEnd: 3.2 } } });
+  const projects = changeProject([], 'save', { id: 'mix-empty', name: 'Intentional silence', mix: { master: 70, bpm: 120, tracks: [empty] } });
+  const restored = loadMix({ getItem: () => JSON.stringify(projects[0].mix) }).tracks[0];
+  const enabled = enableRhythmTrack(restored, 10);
+  assert.deepEqual(enabled.sequence.steps, steps());assert.equal(enabled.sequence.enabled, true);
+  assert.deepEqual(enabled.sequence.sample, { clipStart: 3, clipEnd: 3.2 });
+  assert.equal(enabled.clipStart, 2);assert.equal(enabled.clipEnd, 3);
+});
+
+test('a sample chosen before first creation, including a full-recording reset, is retained', () => {
+  for (const sample of [{ clipStart: 5, clipEnd: 5.5 }, { clipStart: 0, clipEnd: null }]) {
+    const layer = track({ sequence: { enabled: false, initialized: false, steps: steps(), sample } });
+    const created = enableRhythmTrack(layer, 10);
+    assert.deepEqual(created.sequence.sample, sample);assert.deepEqual(created.sequence.steps, steps(0, 4, 8, 12));
+    assert.equal(created.clipStart, 2);assert.equal(created.clipEnd, 3);
+  }
+});
+
+test('legacy shared clips migrate without losing enabled or disabled patterns', () => {
+  for (const enabled of [true, false]) {
+    const legacy = { version: 1, master: 70, tracks: [track({ sequence: { enabled, steps: steps(3, 11) } })] };
+    const restored = validateMix(legacy).tracks[0];
+    assert.equal(restored.sequence.enabled, enabled);assert.equal(restored.sequence.initialized, true);
+    assert.deepEqual(restored.sequence.sample, { clipStart: 2, clipEnd: 3 });
+    assert.deepEqual(enableRhythmTrack(restored, 10).sequence.steps, steps(3, 11));
+    assert.equal(restored.clipStart, 2);assert.equal(restored.clipEnd, 3);
+  }
+  const untouched = track({ sequence: { enabled: false, steps: steps() } });
+  assert.equal(sequenceMetadata(untouched).initialized, false);
+  assert.deepEqual(enableRhythmTrack(untouched, 10).sequence.steps, steps(0, 4, 8, 12));
+});
+
+test('snapshots and dirty checks retain both regions independently, including disabled samples', () => {
+  const original = { master: 70, bpm: 120, tracks: [track({ role: 'nature', clipStart: 1, clipEnd: 7,
+    sequence: { enabled: false, initialized: true, steps: steps(2, 7), sample: { clipStart: 4, clipEnd: 4.2 } } })] };
+  const saved = changeProject([], 'save', { id: 'mix-regions', name: 'Separate regions', mix: original })[0];
+  const restored = validateMix(saved.mix);
+  assert.equal(sameMix(original, restored), true);
+  restored.tracks[0].sequence.sample.clipEnd = 4.3;
+  assert.equal(sameMix(original, restored), false);assert.equal(original.tracks[0].sequence.sample.clipEnd, 4.2);
+  assert.equal(restored.tracks[0].clipEnd, 7);
+  restored.tracks[0].clipEnd = 8;
+  assert.deepEqual(restored.tracks[0].sequence.sample, { clipStart: 4, clipEnd: 4.3 });
+  assert.deepEqual(rhythmRegion(restored.tracks[0], 10), { start: 4, end: 4.3, length: 4.3 - 4 });
+});
+
+test('playback switches between the normal region and rhythm sample without overwriting either', async () => {
+  const { context, sources } = setup();
+  const engine = new AudioEngine({ createContext: () => context });
+  const layer = track({ clipStart: 1, clipEnd: 8,
+    sequence: { enabled: false, initialized: true, steps: steps(0, 4), sample: { clipStart: 4, clipEnd: 4.2 } } });
+  await engine.play([layer], { rain: file }, 70, 120);
+  assert.equal(sources[0].starts[0][1], 1);
+  context.currentTime = .5;engine.setTracks([enableRhythmTrack(layer, 10)]);
+  context.currentTime = .55;engine.scheduler.tick();
+  assert.ok(sources.some((source) => source.starts[0][1] === 4 && Math.abs(source.starts[0][2] - .2) < 1e-8));
+  assert.equal(sources[0].stops, 1);
+  engine.setTracks([layer]);
+  assert.ok(Math.abs(sources.at(-1).starts[0][1] - (1 + engine.position() + .03)) < 1e-8);
+  assert.equal(engine.scheduler.voices.size, 0);assert.equal(engine.playing, true);
+  engine.dispose();
 });
 
 test('old workspaces, named mixes and clips migrate to 100 BPM with no sequenced layers', () => {

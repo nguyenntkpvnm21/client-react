@@ -1,0 +1,86 @@
+/* Shared shell stays mounted while each workspace page changes. */
+.app-header { width: 100%; height: auto; min-height: 82px; gap: 36px; }
+.app-header .brand { flex-shrink: 0; }
+.app-header nav { gap: 24px; align-self: stretch; }
+.app-header nav a { min-height: 54px; font-size: 13px; white-space: nowrap; }
+.app-shell { display: flex; flex-direction: column; }
+.app-main { width: 100%; flex: 1; }
+.app-main:focus { outline: none; }
+.page-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 34px 0 28px; }
+.page-heading h1 { font-size: clamp(29px, 3.2vw, 42px); line-height: 1.2; letter-spacing: -1.3px; font-weight: 650; margin: 10px 0; color: #d4f3e8; }
+.page-heading > div > p:last-child { color: #a5b2bd; font-size: 13px; line-height: 1.8; max-width: 640px; }
+.page-heading .primary-button, .page-studio-link { flex-shrink: 0; min-height: 44px; }
+.page-studio-link { display: inline-flex; align-items: center; gap: 10px; font-size: 12px; color: #a9e7d1; }
+.page-content > .sequencer, .page-content > .arrangement-panel { margin-top: 0; }
+.studio-page-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+.studio-page-grid .workspace-panel { position: static; grid-column: auto; grid-row: auto; }
+.studio-page-grid .workspace-panel { order: 0; }
+.studio-sidebar { display: grid; gap: 20px; min-width: 0; }
+.studio-page-grid .studio-sidebar { order: 1; }
+.app-footer { width: 100%; }
+.workspace-next { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin: 24px 0 0; padding: 20px 0; border-top: 1px solid #6dddc01c; }
+.workspace-next p { margin-right: auto; color: #a4b3bd; font-size: 12px; }
+.workspace-next a { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; font-size: 12px; color: #bce9d9; }
+.workspace-transport { position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #6dddc02b; background: #0e191bf5; backdrop-filter: blur(16px); }
+.workspace-transport-inner { max-width: 1320px; padding: 14px 32px; margin: auto; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.workspace-summary { display: grid; gap: 5px; flex: 1; min-width: 140px; }
+.workspace-summary strong { display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }
+.workspace-summary > span { color: #9badb4; font-size: 10px; line-height: 1.6; }
+.workspace-transport .play-button { min-height: 44px; padding: 10px 16px; }
+.workspace-transport .restart-button { width: 44px; height: 44px; }
+.workspace-transport .master-level { width: auto; margin: 0; gap: 8px; }
+.workspace-transport .master-level input { width: 100px; }
+.workspace-transport .master-level output { min-width: 34px; }
+.workspace-playback-status { display: inline-flex; align-items: center; gap: 8px; color: #a7bdb3; font-size: 11px; min-width: 70px; }
+.page-saved-mixes .saved-panel { padding: 28px; }
+.page-saved-mixes .save-mix-form { max-width: 480px; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.page-saved-mixes .save-mix-form label { grid-column: 1 / -1; }
+.page-saved-mixes .saved-list { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); align-items: start; }
+.page-saved-mixes .saved-item { padding: 18px; }
+.page-saved-mixes .saved-current { max-width: 480px; }
+.page-saved-mixes .saved-panel button { min-height: 44px; }
+.page-saved-mixes .saved-item-actions button { font-size: 11px; padding: 8px 12px; }
+.page-saved-mixes .saved-item-heading strong { font-size: 15px; }
+.page-saved-mixes .saved-item > p, .page-saved-mixes .saved-footnote { font-size: 11px; }
+@media (max-width: 1100px) {
+  .app-header { gap: 24px; }
+  .app-header .local-label { display: none; }
+  .workspace-transport-inner { gap: 14px; }
+  .workspace-playback-status { display: none; }
+  .studio-page-grid { grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; }
+}
+@media (max-width: 900px) {
+  .studio-page-grid { grid-template-columns: minmax(0, 1fr); }
+  .studio-sidebar { grid-template-columns: 1fr 1fr; align-items: start; }
+  .workspace-transport-inner { padding-left: 24px; padding-right: 24px; }
+  .workspace-summary { flex-basis: 100%; }
+  .workspace-summary strong { max-width: 100%; }
+  .workspace-transport .master-level { margin-left: auto; }
+  .page-heading { align-items: flex-start; }
+}
+@media (max-width: 620px) {
+  .app-header { display: flex; flex-wrap: wrap; gap: 6px; padding: 15px 16px 0; min-height: auto; }
+  .app-header .brand { font-size: 24px; gap: 10px; }
+  .app-header .brand-icon { width: 34px; height: 34px; }
+  .app-header nav { width: 100%; display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, .8fr) minmax(0, 1.2fr) minmax(0, 1.1fr); gap: 0; height: auto; }
+  .app-header nav a { justify-content: center; font-size: 11px; min-height: 50px; min-width: 0; padding: 0 2px; }
+  .workspace-transport-inner { padding: 10px 16px; gap: 10px; }
+  .workspace-summary { gap: 3px; }
+  .workspace-summary strong { font-size: 12px; }
+  .workspace-summary > span { font-size: 10px; }
+  .workspace-transport .transport-left { width: auto; gap: 8px; }
+  .workspace-transport .play-button { font-size: 11px; padding: 9px 12px; }
+  .workspace-transport .elapsed { font-size: 11px; }
+  .workspace-transport .master-level { flex-basis: 100%; justify-content: flex-start; margin-left: 0; }
+  .workspace-transport .master-level input { flex: 1; width: 100px; }
+  .page-heading { display: grid; gap: 14px; padding: 26px 0 22px; }
+  .page-heading > .primary-button { justify-self: start; }
+  .page-heading h1 { font-size: 30px; }
+  .page-heading > div > p:last-child { font-size: 12px; }
+  .studio-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .workspace-next { display: grid; gap: 4px; }
+  .workspace-next p { margin-bottom: 8px; }
+  .page-saved-mixes .saved-panel { padding: 20px; }
+  .page-saved-mixes .save-mix-form { grid-template-columns: minmax(0, 1fr); }
+}
+.workspace-notice { max-width: 1256px; margin: 0 auto; padding: 0 16px 12px; color: #c2ddcf; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }

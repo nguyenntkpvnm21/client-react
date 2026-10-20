@@ -1,0 +1,21 @@
+.waveform-editor { margin: 14px 0; min-width: 0; }
+.waveform-toolbar, .waveform-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.waveform-editor button { min-height: 44px; border: 1px solid #47745f; border-radius: 7px; padding: 8px 12px; background: #19372c; color: #d7f5e5; font-size: 12px; }
+.waveform-editor button:disabled { opacity: .4; }
+.waveform-overview { position: relative; height: 40px; border: 1px solid #375f4e; border-radius: 6px; background: #091815; margin: 12px 0; cursor: crosshair; touch-action: none; overflow: hidden; }
+.waveform-editor svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+.waveform-editor svg path { stroke: #7bb9a4; stroke-width: 1.3; }
+.waveform-overview > span { position: absolute; top: 0; bottom: 0; border: 1px solid #beffe0; background: #8dffd41a; pointer-events: none; min-width: 2px; }
+.waveform-selection { height: 144px; position: relative; border: 1px solid #557e6b; border-radius: 8px; overflow: hidden; background: #071412; touch-action: none; user-select: none; cursor: crosshair; }
+.waveform-selected { position: absolute; inset-block: 0; background: #71f2ba28; border-inline: 1px solid #a7edcd; cursor: grab; }
+.waveform-handle { position: absolute; top: 0; bottom: 0; width: 24px; transform: translateX(-50%); display: grid; place-items: center; cursor: ew-resize; color: #e1ffee; background: #152e2690; border-inline: 2px solid #b9f6d9; }
+.waveform-handle span { font-size: 23px; pointer-events: none; }
+.waveform-handle:focus-visible { outline: 2px solid white; outline-offset: -4px; background: #285542; }
+.waveform-audition-head { position: absolute; top: 0; bottom: 0; width: 2px; background: white; pointer-events: none; }
+.waveform-window { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin: 8px 0 12px; }
+.waveform-window span { color: #bbd4c7; font-size: 11px; line-height: 1.6; text-align: center; font-variant-numeric: tabular-nums; }
+.waveform-window button { flex-shrink: 0; min-width: 44px; }
+.waveform-help { color: #abcabc; font-size: 11px; line-height: 1.7; margin-top: 10px; }
+.clip-controls .clip-fields { margin-top: 16px; }
+.clip-controls > details { margin: 16px 0; }
+.clip-controls > details > summary { color: #bddbcd; font-size: 12px; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
