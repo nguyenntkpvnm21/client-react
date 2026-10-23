@@ -1,3 +1,5 @@
+import ArrangementSection from './ArrangementSection';
+import ArrangementExport from './ArrangementExport';
 import TimelineClip from './TimelineClip';
 import { useId, useRef, useState } from 'react';
 import { arrangementWindow, placementMetadata, validatePlacement } from '../lib/arrangementState.js';
@@ -100,7 +102,7 @@ function TimeRuler({ studio }) {
 export default function Arrangement({ studio }) {
   const [error, setError] = useState('');
   const [snap, setSnap] = useState(true);
-  const active = studio.arrangement.enabled && (studio.status === 'playing' || studio.status === 'loading');
+  const active = !studio.loopSection.enabled && studio.arrangement.enabled && (studio.status === 'playing' || studio.status === 'loading');
   const duration = studio.arrangement.duration;
   const cursor = studio.arrangement.enabled ? Math.min(100, Math.max(0, studio.elapsed / duration * 100)) : null;
   async function play() {
@@ -110,18 +112,20 @@ export default function Arrangement({ studio }) {
   return <section className="arrangement-panel panel" id="arrangement" aria-labelledby="arrangement-title">
     <div className="arrangement-heading"><div><p className="eyebrow">GIVE YOUR MIX A BEGINNING AND AN END</p><h2 id="arrangement-title">Arrange your mix</h2>
       <p>Bring sounds in, let them fade, and shape a complete piece.</p></div>
-      <div className="arrangement-playback"><button type="button" className="arrangement-play" disabled={studio.booting || (!active && studio.busy) || !studio.tracks.length} onClick={play}>{studio.arrangement.enabled && studio.status === 'loading' ? 'Cancel arrangement loading' : active ? 'Pause arrangement' : 'Play arrangement'}</button>
+      <div className="arrangement-playback"><button type="button" className="arrangement-play" disabled={studio.booting || (!active && studio.busy) || !studio.tracks.length} onClick={play}>{!studio.loopSection.enabled && studio.arrangement.enabled && studio.status === 'loading' ? 'Cancel arrangement loading' : active ? 'Pause arrangement' : studio.loopSection.enabled ? 'Play full arrangement' : 'Play arrangement'}</button>
         <button type="button" disabled={studio.busy || !studio.arrangement.enabled} onClick={studio.freeMix}>Free mix</button></div></div>
     <div className="arrangement-settings"><LengthForm key={duration + '-' + (studio.activeProject?.id || 'workspace')} studio={studio} />
       <div className="arrangement-position"><span className={studio.arrangement.enabled ? 'arrangement-mode is-on' : 'arrangement-mode'}>{studio.arrangement.enabled ? 'Timeline on' : 'Free mix mode'}</span>
         <output aria-label="Arrangement playback position">{formatTime(studio.arrangement.enabled ? studio.elapsed : 0)} / {formatTime(duration)}</output>
-        <span>{studio.arrangement.enabled && studio.status === 'finished' ? 'Finished. Play again from the beginning.' : 'Playback stops at the composition end.'}</span></div></div>
+        <span>{studio.arrangement.enabled && studio.status === 'finished' ? 'Finished. Play again from the beginning.' : studio.loopSection.enabled ? 'Looping ' + studio.loopSection.start.toFixed(2) + '–' + studio.loopSection.end.toFixed(2) + ' seconds.' : 'Playback stops at the composition end.'}</span></div></div>
     <div className="timeline-instructions"><p id="timeline-help">Drag a clip to move it. Bottom handles trim Entry/Exit; top handles adjust fades. Release applies timing and keeps playback in place. Arrow keys move handles; Shift makes fine adjustments.</p><label><input type="checkbox" checked={snap} onChange={(event) => setSnap(event.target.checked)} />Snap to beats ({studio.bpm} BPM)</label></div>
     <div className="arrangement-listen-tools"><span>Solo isolates selected layers in this mix. Muted layers stay silent until you unmute them.</span>
       {studio.tracks.some((track) => track.solo) && <button type="button" disabled={studio.projectBusy} onClick={studio.clearSolos}>Clear solos</button>}</div>
+    <ArrangementSection studio={studio} snap={snap} />
     <TimeRuler studio={studio} />
     <div className="arrangement-layers">{studio.tracks.map((track) => <ArrangementRow key={track.id} track={track} studio={studio} cursor={cursor} snap={snap} />)}
       {!studio.tracks.length && <p className="arrangement-help">Add a sound in the studio to start arranging.</p>}</div>
+    <ArrangementExport key={studio.activeProject?.id || 'workspace'} studio={studio} />
     {error && <p className="arrangement-error" role="alert">{error}</p>}
     <p className="arrangement-help">One window per layer. Each layer starts its selected recording at Entry; one-shots can finish before Exit. Rhythm hits follow the shared grid inside their window.</p>
     <p className="arrangement-help">Use Play arrangement to apply these timings, or Free mix to return to continuous mixing. Save the mix to keep timings and fades. Source recordings stay intact.</p>

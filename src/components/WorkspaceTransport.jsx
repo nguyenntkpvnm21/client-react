@@ -13,7 +13,7 @@ export default function WorkspaceTransport({ studio }) {
   return <section className="workspace-transport" aria-label="Workspace playback">
     <div className="workspace-transport-inner">
       <div className="workspace-summary"><strong title={studio.activeProject?.name}>{studio.activeProject?.name || 'Current workspace'}</strong>
-        <span>{studio.tracks.length} layers · {studio.arrangement.enabled ? 'Arrangement mode' : 'Free mix'}{studio.activeProject && studio.dirty ? ' · Unsaved changes' : ''}</span></div>
+        <span>{studio.tracks.length} layers · {studio.arrangement.enabled ? 'Arrangement mode' : 'Free mix'}{studio.loopSection.enabled ? ' · Loop ' + studio.loopSection.start.toFixed(2) + '–' + studio.loopSection.end.toFixed(2) + ' s' : ''}{studio.activeProject && studio.dirty ? ' · Unsaved changes' : ''}</span></div>
       <div className="transport-left"><button type="button" className="play-button" disabled={studio.booting || (!active && studio.busy) || !studio.tracks.length} onClick={studio.togglePlayback}>
         <Icon name={active ? 'pause' : 'play'} size={19} />{studio.status === 'loading' ? 'Cancel loading' : active ? 'Pause mix' : 'Play mix'}</button>
         <button type="button" className="restart-button" aria-label="Restart mix" disabled={studio.busy || !studio.tracks.length} onClick={studio.restartPlayback}><Icon name="reset" size={19} /></button>
@@ -22,6 +22,7 @@ export default function WorkspaceTransport({ studio }) {
         onChange={(event) => studio.setMaster(Number(event.target.value))} disabled={studio.projectBusy} aria-label="Master volume" /><output>{studio.master}%</output></label>
       <span className="workspace-playback-status" role="status"><span className={'status-dot ' + (studio.status === 'playing' ? 'is-playing' : '')} />{status}</span>
     </div>
+    {studio.exportState?.active && <div className="workspace-export-progress"><span role="status">{studio.exportState.stage}</span><progress aria-label="Workspace export progress" max="1" value={studio.exportState.progress} /><button type="button" disabled={studio.exportState.canceling} onClick={studio.cancelExport}>{studio.exportState.canceling ? 'Canceling…' : 'Cancel export'}</button></div>}
     {studio.notice && <p className="workspace-notice" role="status">{studio.notice}</p>}
   </section>;
 }

@@ -1,6 +1,9 @@
+import { ArrangementLooper } from './arrangementLooper.js';
+import { validateLoopRegion } from './loopRegion.js';
+import { createMasterGraph, releaseSource, scheduleNormalTrack } from './audioGraph.js';
 import { findSoundRegion, waveformPeaks } from './audioSelection.js';
 import { rhythmMetadata, rhythmRegion } from './rhythmState.js';
-import { arrangementMetadata, arrangementWindow, fitFades, placementMetadata, scheduleWindowEnvelope } from './arrangementState.js';
+import { arrangementMetadata, placementMetadata } from './arrangementState.js';
 import { StepScheduler } from './stepScheduler.js';
 import { DEFAULT_BPM, isSequenced, validBpm, stepSeconds } from './sequencerState.js';
 import { clipRegion, validateRegion } from './clipRegion.js';
@@ -46,6 +49,8 @@ export class AudioEngine {
     this.bpm = DEFAULT_BPM;
     this.arrangement = arrangementMetadata();
     this.finishTimer = null;
+    this.looper = null;
+    this.loopRegion = { start: 0, end: 4, enabled: false };
     this.scheduler = null;
     this.context = null;
     this.buffers = new Map();
@@ -72,16 +77,8 @@ export class AudioEngine {
     if (this.disposed) throw new Error('This audio workspace was closed. Reload to continue.');
     if (!this.context) {
       this.context = this.createContext();
-      this.masterNode = this.context.createGain();
-      const compressor = this.context.createDynamicsCompressor();
-      this.compressor = compressor;
-      compressor.threshold.value = -3;
-      compressor.knee.value = 3;
-      compressor.ratio.value = 12;
-      compressor.attack.value = 0.003;
-      compressor.release.value = 0.2;
-      this.masterNode.connect(compressor).connect(this.context.destination);
-      this.masterNode.gain.value = this.master / 100;
+      const graph = createMasterGraph(this.context, this.master);
+      this.masterNode = graph.master;this.compressor = graph.compressor;
       this.context.onstatechange = () => {
         if (this.context.state !== 'running') { if (this.playing) this.pause(); else this.stopPreview(); }
       };
@@ -90,14 +87,15 @@ export class AudioEngine {
   }
 
   position() {
-    return this.playing ? Math.max(0, this.context.currentTime - this.anchor) : this.offset;
+    return this.playing && this.looper ? this.looper.position() : this.playing ? Math.max(0, this.context.currentTime - this.anchor) : this.offset;
   }
 
   isSequencing() { return this.tracks.some(isSequenced); }
 
-  currentStep() { return this.playing && this.scheduler?.running ? Math.floor(Math.max(0, this.scheduler.indexAt(this.context.currentTime)) + 1e-8) % 16 : null; }
+  currentStep() { if (this.playing && this.looper) return this.looper.currentStep();return this.playing && this.scheduler?.running ? Math.floor(Math.max(0, this.scheduler.indexAt(this.context.currentTime)) + 1e-8) % 16 : null; }
 
   tempoState() {
+    if (this.playing && this.looper) return this.looper.tempoState();
     const change = this.scheduler?.running ? this.scheduler.tempoChange : null;
     return { active: this.scheduler?.running ? (change && this.context.currentTime >= change.when ? change.bpm : this.scheduler.bpm) : this.bpm,
       pending: change && this.context.currentTime < change.when ? change.bpm : null };
@@ -107,7 +105,7 @@ export class AudioEngine {
     const next = validBpm(value);
     if (next === this.bpm) return;
     this.bpm = next;
-    this.scheduler?.setBpm(next);
+    if (this.looper) this.looper.setBpm(next);else this.scheduler?.setBpm(next);
   }
 
   maybeFinish() {
@@ -121,7 +119,7 @@ export class AudioEngine {
   }
 
   checkFinish() {
-    if (!this.playing || !this.arrangement.enabled || this.position() < this.arrangement.duration) return;
+    if (this.looper || !this.playing || !this.arrangement.enabled || this.position() < this.arrangement.duration) return;
     this.pause();
     this.offset = this.arrangement.duration;
     this.sequencePhase = 0;
@@ -134,65 +132,31 @@ export class AudioEngine {
     if (this.masterNode) this.masterNode.gain.setTargetAtTime(value / 100, this.context.currentTime, 0.015);
   }
 
+  setLoopRegion(value) {
+    const next = value.enabled ? validateLoopRegion(value, this.arrangement.duration) : { ...value, enabled: false };
+    if (next.enabled || this.loopRegion.enabled) this.pause();
+    this.loopRegion = next;
+  }
+
   stopNode(id) {
-    const node = this.nodes.get(id);
-    if (!node) return;
-    this.nodes.delete(id);
-    node.source.onended = null;
-    try { node.source.stop(); } catch { /* A source may already have ended. */ }
-    node.source.disconnect();
-    node.gain.disconnect();
-    node.envelope?.disconnect();
+    const node = this.nodes.get(id);if (!node) return;
+    this.nodes.delete(id);releaseSource(node);
   }
 
   startTrack(track, when, offset) {
     if (isSequenced(track)) return;
-    const buffer = this.buffers.get(track.id);
-    if (!buffer) return;
-    const region = clipRegion(track, buffer.duration);
-    let localOffset = offset;
-    let duration = Infinity;
-    let window;
-    if (this.arrangement.enabled) {
-      window = arrangementWindow(track, this.arrangement);
-      if (!track.loop) window = fitFades(window, Math.min(window.end, window.start + region.length));
-      if (offset >= window.end || window.end <= window.start) return;
-      const entry = Math.max(offset, window.start);
-      when += Math.max(0, window.start - offset);
-      localOffset = entry - window.start;
-      duration = window.end - entry;
-    }
-    if (!track.loop && localOffset >= region.length) return;
-    const source = this.context.createBufferSource();
-    const gain = this.context.createGain();
-    source.buffer = buffer;
-    source.loop = track.loop;
-    source.loopStart = region.start;
-    source.loopEnd = region.end;
-    gain.gain.value = audibleGain(track, this.tracks);
-    let envelope;
-    if (window) {
-      envelope = this.context.createGain();
-      scheduleWindowEnvelope(envelope.gain, when, Math.max(offset, window.start), window);
-      source.connect(gain).connect(envelope).connect(this.masterNode);
-    } else source.connect(gain).connect(this.masterNode);
-    const node = { source, gain, envelope };
+    const buffer = this.buffers.get(track.id);if (!buffer) return;
+    const node = scheduleNormalTrack({ context: this.context, output: this.masterNode, track, tracks: this.tracks, buffer, when, offset, arrangement: this.arrangement });
+    if (!node) return;
     this.nodes.set(track.id, node);
-    source.onended = () => {
+    node.source.onended = () => {
       if (this.nodes.get(track.id) !== node) return;
-      this.nodes.delete(track.id);
-      source.disconnect();
-      gain.disconnect();
-      envelope?.disconnect();
-      this.maybeFinish();
+      this.nodes.delete(track.id);releaseSource(node, false);this.maybeFinish();
     };
-    const position = region.start + (track.loop ? localOffset % region.length : localOffset);
-    if (window) source.start(when, position, duration);
-    else if (track.loop || region.end === buffer.duration) source.start(when, position);
-    else source.start(when, position, region.length - localOffset);
   }
 
   setTracks(tracks) {
+    if (this.playing && this.looper) { this.tracks = tracks;this.looper.setTracks(tracks);return; }
     const moved = this.arrangement.enabled ? tracks.filter((track) => {
       const previous = this.tracks.find((item) => item.id === track.id);
       return previous && JSON.stringify(placementMetadata(previous.placement)) !== JSON.stringify(placementMetadata(track.placement));
@@ -276,6 +240,16 @@ export class AudioEngine {
       }
       if (!this.arrangement.enabled && !this.isSequencing() && !this.tracks.some((track) => track.loop) && this.tracks.every((track) => this.offset >= clipRegion(track, this.buffers.get(track.id).duration).length)) this.offset = 0;
       const when = context.currentTime + 0.06;
+      if (this.arrangement.enabled && this.loopRegion.enabled) {
+        const region = validateLoopRegion(this.loopRegion, this.arrangement.duration);
+        if (this.offset < region.start || this.offset >= region.end) this.offset = region.start;
+        this.playing = true;
+        this.looper = new ArrangementLooper({ context, output: this.masterNode, buffers: this.buffers,
+          onError: () => { this.pause();this.onError(new Error('Section playback stopped. Press Play loop to try again.')); } });
+        this.looper.start(this.tracks, this.bpm, this.arrangement, region, when, this.offset);
+        if (this.playing) this.onState('playing');
+        return;
+      }
       this.anchor = when - this.offset;
       this.playing = true;
       for (const track of this.tracks) this.startTrack(track, when, this.offset);
@@ -304,6 +278,7 @@ export class AudioEngine {
   pause() {
     this.stopPreview();
     this.offset = this.position();
+    this.looper?.stop();this.looper = null;
     this.sequencePhase = this.scheduler?.running ? Math.max(0, this.scheduler.indexAt(this.context.currentTime)) : null;
     this.sequenceTails = this.scheduler?.running ? this.scheduler.captureTails() : null;
     this.playing = false;
@@ -317,7 +292,7 @@ export class AudioEngine {
 
   restart() {
     this.pause();
-    this.offset = 0;
+    this.offset = this.arrangement.enabled && this.loopRegion.enabled ? this.loopRegion.start : 0;
     this.sequencePhase = 0;
     this.sequenceTails = null;
   }
@@ -336,6 +311,7 @@ export class AudioEngine {
     if (this.previewId === id) this.stopPreview();
     this.stopNode(id);
     this.scheduler?.remove(id);
+    this.looper?.remove(id);
     this.pending.get(id)?.controller.abort();
     const buffer = this.buffers.get(id);
     if (buffer) this.memory -= buffer.length * buffer.numberOfChannels * 4;

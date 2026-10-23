@@ -41,7 +41,7 @@ export class StepScheduler {
     const now = this.context.currentTime;
     // Cancel lookahead voices before rebuilding the queue with the edited pattern.
     for (const voice of [...this.voices]) if (voice.when >= now) this.release(voice);
-    this.nextIndex = Math.max(0, Math.ceil(this.indexAt(now) - 1e-8));
+    this.nextIndex = Math.max(0, Math.ceil(this.indexAt(Math.max(now, this.notBefore)) - 1e-8));
     for (const track of changed.filter(isSequenced)) {
       if (moved.has(track.id)) {
         const tails = [...this.voices].filter((voice) => voice.id === track.id && voice.when <= now && voice.end > now)
@@ -126,11 +126,13 @@ export class StepScheduler {
     this.arrangement = arrangementMetadata(options.arrangement);
     this.timelineAnchor = options.timelineAnchor ?? anchor;
     this.anchor = anchor;
+    this.notBefore = anchor + offset;
     this.seconds = stepSeconds(bpm);
     this.bpm = bpm;
     this.tempoChange = null;
     this.nextIndex = Math.ceil(offset / this.seconds - 1e-8);
     this.maxSteps = options.maxSteps ?? Infinity;
+    this.stopAt = options.stopAt ?? Infinity;
     this.running = true;
     for (const track of tracks.filter(isSequenced)) {
       this.createChannel(track);
@@ -186,6 +188,7 @@ export class StepScheduler {
       if (position - elapsed < window.start - 1e-8 || position >= window.end - 1e-8) return;
       length = Math.min(length, window.end - position);
     }
+    length = Math.min(length, this.stopAt - (when - this.timelineAnchor));
     if (length <= 0.000001) return;
     const overlaps = [...this.voices].filter((voice) => voice.id === track.id && voice.when <= when && voice.end > when).sort((a, b) => a.when - b.when);
     for (const voice of overlaps.slice(0, Math.max(0, overlaps.length - MAX_RING_VOICES + 1))) {
@@ -214,8 +217,8 @@ export class StepScheduler {
       const now = this.context.currentTime;
       this.commitTempo(now);
       // Missed ticks are skipped, never emitted as a burst after a stalled tab.
-      this.nextIndex = Math.max(this.nextIndex, Math.ceil(this.indexAt(now) - 1e-8));
-      while (this.nextIndex < this.maxSteps && this.timeAt(this.nextIndex) <= now + 0.12) {
+      this.nextIndex = Math.max(this.nextIndex, Math.ceil(this.indexAt(Math.max(now, this.notBefore)) - 1e-8));
+      while (this.nextIndex < this.maxSteps && this.timeAt(this.nextIndex) - this.timelineAnchor < this.stopAt - 1e-8 && this.timeAt(this.nextIndex) <= now + 0.12) {
         const index = this.nextIndex++;
         const when = this.timeAt(index);
         for (const track of this.tracks) {
