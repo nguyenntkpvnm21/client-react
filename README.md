@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 142 tests. No additional testing dependency is required.
+The automated suite has 148 tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -96,8 +96,15 @@ auditions remain separate from the shared mix transport.
 
 - Included recordings: Rain, Birds and Music, with search/category filters.
 - Up to eight layers, including imported files.
-- Up to 30 MiB per file and 15 minutes per recording, with a 512 MiB decoded-audio
-  budget for the workspace. Browser decoding support determines accepted formats.
+- Up to 30 MiB per file and 15 minutes per recording, with a 1 GiB decoded-audio
+  budget for the workspace. Playback decodes at 44.1 kHz, independent of the device
+  sample rate. Eight four-minute stereo layers use about 646 MiB of PCM; compressed
+  file sizes do not describe their playback memory usage.
+- File reads and decoding run one at a time to limit temporary memory peaks.
+  Repeated requests for a layer share its decoded audio. Under memory pressure,
+  unused decoded recordings are released while mix layers and previews stay cached.
+  Source files, saved mixes, stereo channels, pitch and timing remain unchanged.
+  Browser/device memory can still limit very large mixes.
 - Nature imports loop by default; Music/instrumental and Vocal imports do not.
   The included Music layer has its own looping default. Changing role does not
   silently change an existing Loop setting.
@@ -321,7 +328,7 @@ Saved mixes contain configurations, not a rendered WAV/MP3 file.
 
 ## Verification
 
-The 142 tests cover migration, separate regions, clear/enable preservation,
+The 148 tests cover migration, separate regions, clear/enable preservation,
 selection bounds and stereo detection, timeline bounds/snap/fades, mono/ringing
 scheduling, bounded overlaps, finite isolated previews, cancellation, future
 entries, source offsets, pause/resume across tempo changes, finite completion,
@@ -354,6 +361,11 @@ Chromium check covers mouse drag-once behavior, touch, keyboard, exact time,
 invalid input/focus, all four pages, section-loop boundaries, rapid paused seeks,
 repeating Free mix, unchanged persisted metadata and full-length WAV output.
 The existing eight Focus Session tests are checked separately.
+
+Memory regressions cover six/eight four-minute stereo layers above the former
+512 MiB limit, aligned playback and seeks, cache accounting, fixed decode rate,
+serialized reads/decodes, duplicate requests, queued cancellation/failure and
+eviction that preserves active layers and previews.
 
 ## Source responsibilities
 
