@@ -10,7 +10,10 @@ import { DEFAULT_BPM, isSequenced, validBpm, stepSeconds } from './sequencerStat
 import { clipRegion, validateRegion } from './clipRegion.js';
 import { audibleGain } from './studioState.js';
 
-const MEMORY_LIMIT = 512 * 1024 * 1024;
+// Eight four-minute stereo layers at 44.1 kHz use about 646 MiB of PCM.
+// The old 512 MiB ceiling rejected ordinary mixes even when decoding succeeded.
+const MEMORY_LIMIT = 1024 * 1024 * 1024;
+const SAMPLE_RATE = 44100;
 
 function auditionTrack(track) { return { ...track, volume: 100, muted: false, solo: false, sequence: { ...track.sequence, enabled: true } }; }
 function auditionDuration(track, buffer, bpm) {
@@ -43,7 +46,7 @@ function waveform(buffer) {
 
 export class AudioEngine {
   constructor({ createContext, onState = () => {}, onTrack = () => {}, onError = () => {} } = {}) {
-    this.createContext = createContext || (() => new (window.AudioContext || window.webkitAudioContext)());
+    this.createContext = createContext || (() => new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE }));
     this.onState = onState;
     this.onTrack = onTrack;
     this.onError = onError;
@@ -56,6 +59,7 @@ export class AudioEngine {
     this.context = null;
     this.buffers = new Map();
     this.pending = new Map();
+    this.loadQueue = null;
     this.nodes = new Map();
     this.tracks = [];
     this.master = 75;
@@ -196,7 +200,15 @@ export class AudioEngine {
     const controller = new AbortController();
     const operation = {};
     operation.controller = controller;
+    const previous = this.loadQueue;
+    let release;
+    const turn = new Promise((resolve) => { release = resolve; });
+    this.loadQueue = turn;
     operation.promise = (async () => {
+      // Keep compressed reads and decoder working buffers out of parallel peaks.
+      // A rejected/canceled load still releases the next operation.
+      if (previous) await previous;
+      if (this.disposed || controller.signal.aborted) throw new Error('Audio loading was canceled.');
       let bytes;
       if (file) bytes = await file.arrayBuffer();
       else {
@@ -204,6 +216,7 @@ export class AudioEngine {
         if (!response.ok) throw new Error('Unable to load ' + track.name + '. Check the audio file and try again.');
         bytes = await response.arrayBuffer();
       }
+      if (this.disposed || controller.signal.aborted) throw new Error('Audio loading was canceled.');
       let buffer;
       try { buffer = await context.decodeAudioData(bytes); }
       catch { throw new Error('Unable to read ' + track.name + '. Try a valid MP3, WAV or OGG file.'); }
@@ -212,12 +225,26 @@ export class AudioEngine {
         throw new Error(track.name + ' must be between 0 and 15 minutes long.');
       }
       const size = buffer.length * buffer.numberOfChannels * 4;
-      if (this.memory + size > MEMORY_LIMIT) throw new Error('This mix is too large. Remove a long track or use shorter recordings.');
+      if (this.memory + size > MEMORY_LIMIT) {
+        // Waveform/sample inspection can leave decoded recordings outside the mix.
+        // Never evict a layer in the mix or an isolated preview to make room.
+        const retained = new Set(this.tracks.map((item) => item.id));
+        retained.add(this.previewId);
+        for (const [id, cached] of this.buffers) if (!retained.has(id) && !this.nodes.has(id)) {
+          this.buffers.delete(id);
+          this.memory -= cached.length * cached.numberOfChannels * 4;
+        }
+      }
+      if (this.memory + size > MEMORY_LIMIT) throw new Error('Not enough playback memory for ' + track.name + '. This mix would exceed 1 GiB of decoded audio. Your saved mixes and original files are unchanged.');
       this.memory += size;
       this.buffers.set(track.id, buffer);
       this.onTrack(track.id, { duration: buffer.duration, peaks: waveform(buffer) });
       return buffer;
-    })().finally(() => { if (this.pending.get(track.id) === operation) this.pending.delete(track.id); });
+    })().finally(() => {
+      release();
+      if (this.loadQueue === turn) this.loadQueue = null;
+      if (this.pending.get(track.id) === operation) this.pending.delete(track.id);
+    });
     this.pending.set(track.id, operation);
     return operation.promise;
   }
