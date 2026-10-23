@@ -1,4 +1,7 @@
 const shapes = {
+  rhythm: <><rect x="3" y="4" width="6" height="6" rx="1" /><rect x="15" y="4" width="6" height="6" rx="1" /><rect x="3" y="16" width="6" height="6" rx="1" /><rect x="15" y="16" width="6" height="6" rx="1" /></>,
+  timeline: <><path d="M4 3v18M4 7h16M4 13h12M4 19h16" /><path d="M9 4v6m6 0v6m-5 0v6" /></>,
+  library: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 3v18m4-12h4m-4 4h4" /></>,
   leaf: <><path d="M20 4c-8-2-15 2-15 9a6 6 0 0 0 6 6c7 0 10-7 9-15Z" /><path d="M4 21 15 10" /></>,
   rain: <><path d="M7 13a4 4 0 1 1 1-8 5 5 0 0 1 9 2 3 3 0 0 1 0 6" /><path d="m8 16-1 4m6-4-1 4m6-4-1 4" /></>,
   birds: <><path d="M16 7h3l3 3-3 1v3a6 6 0 0 1-6 6H3l4-4V9a4 4 0 0 1 7-3l2 1Z" /><path d="m8 15 5-4M17 9h.01" /></>,

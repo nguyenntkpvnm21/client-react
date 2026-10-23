@@ -1,0 +1,111 @@
+/* Black is the canvas. Colour belongs to sound, selection and active controls. */
+.app-shell { background: var(--page); color: var(--text); }
+.app-shell .panel { background: var(--panel); border-color: var(--border); box-shadow: none; }
+.app-shell :is(.workspace-panel, .import-panel, .library-panel, .saved-panel, .sequencer, .arrangement-panel) { background: var(--panel); border-color: var(--border); }
+.app-shell :is(.eyebrow, .sequence-beat-label) { color: #858585; }
+.app-shell .eyebrow { font-size: 9px; font-weight: 650; line-height: 1.5; letter-spacing: 1.7px; }
+.app-shell :is(.mixer-heading h2, .section-heading h2, .sequencer h2, .arrangement-heading h2, .saved-panel h2, .clip-heading h4, .arrangement-section h3, .arrangement-export h3) { color: #f1f1f1; }
+.app-shell :is(.import-description, .library-footnote, .storage-hint, .file-hint, .workspace-project, .workspace-project > span:last-child, .mixer-note, .normal-clip-context, .clip-help, .clip-loading, .clip-times, .waveform-help, .waveform-window span, .clip-controls > details > summary, .sequencer-intro, .sequencer-meter, .sequencer-feedback, .sequence-sound p, .sequence-row-footer, .sequence-idle, .sequencer-help, .sequence-window, .rhythm-options > summary, .arrangement-heading > div > p:last-child, .arrangement-position, .arrangement-length > p, .arrangement-help, .arrangement-row-heading span, .arrangement-row-summary, .timeline-feedback, .timeline-row-tools > span, .timeline-instructions p, .arrangement-listen-tools > span, .arrangement-seek-help, .section-heading p, .arrangement-export p, .section-summary, .section-exact summary, .saved-description, .saved-current > span, .saved-current p, .saved-item > p, .saved-confirm p, .saved-empty, .saved-footnote) { color: #a2a2a2; }
+.app-shell :is(.import-role, .clip-fields label, .clip-loop, .tempo-form label, .timing-inputs label, .arrangement-length label, .timeline-row-tools label, .timeline-instructions label, .section-fields label, .arrangement-export label, .save-mix-form label, .saved-confirm legend) { color: #c5c5c5; }
+.app-shell :is(.tempo-form label span, .timing-inputs label span, .arrangement-length label span, .section-fields label span) { color: #969696; }
+.app-shell :is(.arrangement-position output, .sequencer-meter output, .section-summary output, .saved-current strong) { color: #e9e9e9; }
+.app-shell :is(.count-pill, .arrangement-mode) { background: #242424; border-color: #3b3b3b; color: #a9a9a9; }
+.app-shell .primary-button { background: #e8e8e8; color: #111; border-color: #eee; box-shadow: none; font-weight: 650; }
+.app-shell .primary-button:hover { background: #fff; border-color: #fff; box-shadow: 0 0 18px #ffffff0b; }
+.app-shell .play-button { background: #ededed; color: #101010; border-color: #f6f6f6; box-shadow: none; }
+.app-shell .play-button:hover { background: #fff; box-shadow: 0 0 16px #ffffff15; }
+.app-shell .play-button:not(:disabled) { box-shadow: none; }
+.app-shell .transport-play.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px #b7ff4a22, 0 0 14px #b7ff4a0c; }
+.app-main .restart-button { background: #202020; border-color: #444; color: #ccc; }
+.app-shell .text-button { color: #a2a2a2; }
+.app-shell .text-button:hover { color: var(--accent); }
+.app-shell :is(.search-field, .import-role select, .clip-fields input[type="number"], .tempo-form input, .pattern-audition select, .arrangement-panel input:not([type="checkbox"]), .save-mix-form input, .saved-confirm input) { background: var(--field); border-color: #424242; color: #ededed; }
+.app-shell :is(.library-filters button, .blend-row button) { color: #a7a7a7; border-color: #3b3b3b; background: transparent; }
+.app-shell :is(.library-filters button, .blend-row button)[aria-pressed="true"] { background: #b7ff4a0b; color: var(--accent); border-color: #b7ff4a65; }
+.app-shell :is(.blend-row, .sequencer-toolbar, .rhythm-options, .arrangement-settings, .arrangement-row, .arrangement-section, .arrangement-export, .saved-current, .saved-confirm) { border-color: #303030; }
+.app-shell .import-dropzone { background: #171717; border-color: #4a4a4a; }
+.app-shell .import-dropzone:hover { background: #202020; border-color: var(--accent); }
+.app-shell .import-panel .section-heading > svg { color: #9c9c9c; }
+.app-shell .sound-art { color: var(--accent); }
+.app-shell .rain .sound-art { color: var(--cyan); }
+.app-shell .music .sound-art { color: var(--purple); }
+.app-shell .add-sound:not(:disabled):hover { color: var(--accent); background: #252525; }
+.app-shell .add-sound.is-added { color: #777; background: transparent; }
+.app-shell .library-footnote svg { color: #8c8c8c; }
+
+/* Neutral layer surfaces; the waveform and a thin edge carry the role colour. */
+.app-shell .track-card { --track-color: var(--cyan); background: #191919; border-color: #353535; box-shadow: inset 2px 0 0 var(--track-color); }
+.app-shell .track-card.music { --track-color: var(--purple); background: #191919; border-color: #353535; }
+.app-shell .track-card.vocal { --track-color: var(--pink); background: #191919; border-color: #353535; }
+.app-shell .track-card:hover { border-color: #565656; }
+.app-shell .track-icon { background: #242424; border-color: #3b3b3b; color: var(--track-color); }
+.app-shell :is(.track-index, .track-name > span, .track-role, .track-buttons button) { color: #999; }
+.app-shell .track-name h3 { color: #f1f1f1; }
+.app-shell .track-buttons button { border-color: #424242; }
+.app-shell .track-buttons button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: #b7ff4a70; }
+.app-shell .track-buttons .remove-layer { border-color: transparent; }
+.app-shell .track-buttons .remove-layer:hover { color: #ff9ba4; }
+.app-shell .track-role select { background: #242424; border-color: #444; }
+.app-shell .track-card .track-level input { background: linear-gradient(to right, var(--track-color) var(--level, 0%), #3c3c3c var(--level, 0%)); }
+.app-shell .track-card .track-level input::-webkit-slider-thumb { background: var(--track-color); border-color: var(--track-color); }
+.app-shell .track-card .track-level input::-moz-range-thumb { background: var(--track-color); border-color: var(--track-color); }
+.app-shell .empty-mix { border-color: #414141; color: #c3c3c3; }
+
+/* Editors keep dark fields and only illuminate the selected audio. */
+.app-shell .clip-editor { background: #171717; border-color: #454545; }
+.app-shell :is(.clip-wave, .waveform-overview, .waveform-selection) { background: #0b0b0b; border-color: #454545; }
+.app-shell .waveform-editor svg path { stroke: var(--cyan); }
+.app-shell .waveform-overview > span { border-color: #50ddf3a0; background: #50ddf315; }
+.app-shell .waveform-selected { background: #50ddf31a; border-color: var(--cyan); }
+.app-shell .waveform-handle { background: #252525dd; color: #e9e9e9; border-color: var(--cyan); }
+.app-shell .waveform-handle:focus-visible { background: #333; }
+.app-shell .clip-duration { color: var(--cyan); }
+.app-shell :is(.clip-actions button, .clip-loading button, .waveform-editor button, .pattern-audition button, .rhythm-arrangement-banner button, .arrangement-panel button, .saved-button, .saved-item-actions button, .saved-confirm button) { background: #252525; color: #d8d8d8; border-color: #494949; }
+.app-shell :is(.clip-actions .clip-apply, .arrangement-panel button.arrangement-play, .arrangement-panel button.timing-apply) { background: var(--accent); color: #141414; border-color: var(--accent); }
+.app-shell :is(.clip-actions button, .waveform-editor button, .arrangement-panel button, .saved-button):hover:not(:disabled) { border-color: #8a8a8a; }
+.app-shell :is(.sequencer, .arrangement-panel, .clip-editor) :focus-visible { outline-color: var(--accent); }
+
+/* The step grid is the light, not the surrounding panel. */
+.app-shell .sequencer-save, .app-shell .normal-clip-context a { color: var(--accent); }
+.app-shell .sequence-row { --rhythm-color: var(--cyan); background: #191919; border-color: #373737; }
+.app-shell .sequence-row.music { --rhythm-color: var(--purple); }
+.app-shell .sequence-row.vocal { --rhythm-color: var(--pink); }
+.app-shell .sequence-sound-icon { background: #262626; color: var(--rhythm-color); }
+.app-shell .sequence-steps button { background: #252525; border-color: #444; color: #a4a4a4; }
+.app-shell .sequence-steps button.beat-start { border-left-color: #777; }
+.app-shell .sequence-steps button[aria-pressed="true"] { background: var(--rhythm-color); color: #121212; border-color: var(--rhythm-color); box-shadow: 0 0 10px color-mix(in srgb, var(--rhythm-color) 12%, transparent); }
+.app-shell .sequence-steps button.is-current { outline-color: #fff; }
+.app-shell .rhythm-arrangement-banner { background: #1c1b20; border-color: #49404e; }
+.app-shell .rhythm-arrangement-banner strong { color: var(--purple); }
+.app-shell .rhythm-arrangement-banner p { color: #a9a6ae; }
+
+/* Timeline lanes stay black; coloured clips remain readable at a glance. */
+.app-shell .arrangement-row { --cue-color: var(--cyan); }
+.app-shell .arrangement-row.music { --cue-color: var(--purple); }
+.app-shell .arrangement-row.vocal { --cue-color: var(--pink); }
+.app-shell .arrangement-lane { background: repeating-linear-gradient(90deg, #ffffff09 0, #ffffff09 1px, transparent 1px, transparent 25%), #0a0a0a; }
+.app-shell .timeline-clip { background: #191919; }
+.app-shell .timeline-source { opacity: .12; }
+.app-shell .timeline-silence { background: repeating-linear-gradient(135deg, #0a0a0a 0, #0a0a0a 5px, #343434 5px, #343434 7px); border-color: #777; }
+.app-shell .timeline-handle span { background: #242424ee; border-color: #666; color: var(--cue-color); }
+.app-shell .timeline-fade { background: #000; }
+.app-shell .timeline-move span { color: #f2f2f2; }
+.app-shell .timing-form { background: #1a1a1a; border-color: #494949; }
+.app-shell .arrangement-mode.is-on { color: var(--accent); background: #242a1e; }
+.app-shell .arrangement-row-controls button[aria-pressed="true"] { color: var(--accent); border-color: #b7ff4a70; background: var(--accent-soft); }
+.app-shell .arrangement-ruler { background: #181818; border-color: #454545; color: #aaa; }
+.app-shell .arrangement-ruler .ruler-playhead { background: var(--accent); }
+.app-shell .section-strip { background: repeating-linear-gradient(90deg, #ffffff0a 0, #ffffff0a 1px, transparent 1px, transparent 25%), #0d0d0d; border-color: #494949; }
+.app-shell .section-selected { background: #50ddf31c; border-color: #50ddf390; }
+.app-shell .section-move { color: #ddd; }
+.app-shell .section-handle span { color: var(--cyan); background: #252525; border-color: #666; }
+.app-shell .export-ready a { color: var(--accent); }
+
+.app-shell .saved-item { background: #191919; border-color: #373737; }
+.app-shell .saved-item.is-current { background: #1b1b1b; border-color: #4c4c4c; box-shadow: inset 3px 0 0 var(--accent); }
+.app-shell .saved-notice { background: #202020; border-color: #454545; color: #c1c1c1; }
+.app-shell .saved-item-actions button:hover:not(:disabled) { color: var(--accent); border-color: #777; }
+.app-shell .sample-tail-warning, .app-shell .storage-warning { background: #231d14; border-color: #5b4a2f; color: #e8c69e; }
+.app-shell .arrangement-export p.export-routing { color: #e8c69e; }
+
+.app-shell .sequencer .clip-editor .clip-actions .clip-apply { background: var(--accent); color: #141414; border-color: var(--accent); }

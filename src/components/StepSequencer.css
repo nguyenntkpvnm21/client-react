@@ -13,7 +13,7 @@
 .tempo-form label span { color: #89b9a5; }
 .tempo-form > div { display: flex; gap: 6px; }
 .tempo-form input { width: 76px; min-width: 0; padding: 9px; color: #dff9eb; border: 1px solid #4e7160; background: #080f11; border-radius: 7px; font-size: 15px; min-height: 44px; }
-.sequencer button:not(.play-button):not(.restart-button):not(.sequence-steps button) { border: 1px solid #39584b; background: #1b3028; color: #d1efdf; padding: 8px 12px; font-size: 12px; border-radius: 7px; min-height: 44px; }
+.sequencer button:not(.play-button):not(.restart-button):not(.sequence-steps button) { border: 1px solid #494949; background: var(--surface); color: #d8d8d8; padding: 8px 12px; font-size: 12px; border-radius: 7px; min-height: 44px; }
 .tempo-form > p { font-size: 11px; color: #a0b8ad; margin: 5px 0 0; line-height: 1.5; }
 .tempo-form .tempo-error { color: #ffc0b9; }
 .sequencer-meter { display: grid; gap: 8px; font-size: 12px; color: #adc6ba; }
@@ -32,7 +32,7 @@
 .sequence-sound p { color: #a0b7aa; font-size: 12px; line-height: 1.6; margin-top: 4px; }
 .sequence-tools { display: flex; gap: 8px; flex-wrap: wrap; }
 .sequence-tools button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-.sequence-tools .create-rhythm { background: #a0e7c3 !important; color: #10291e !important; border-color: #b6f3d4 !important; font-weight: 650; }
+.sequence-tools .create-rhythm { background: var(--accent) !important; color: #141414 !important; border-color: var(--accent) !important; font-weight: 650; }
 .sequence-beat-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
 .sequence-beat { min-width: 0; }
 .sequence-beat-label { display: block; margin-bottom: 8px; color: #a4c1af; font-size: 11px; }
@@ -79,7 +79,7 @@
 .normal-clip-context { font-size: 11px; line-height: 1.7; color: #c0d6ca; margin-top: 12px; }
 .normal-clip-context a { color: #9df0cc; text-decoration: underline; }
 .sequence-window { margin: 0 0 10px; }
-.sequence-tools button[aria-pressed=true] { border-color: #8cdeb1 !important; color: #baf1d4 !important; }
+.sequence-tools button[aria-pressed=true] { border-color: var(--accent) !important; color: var(--accent) !important; }
 .sequence-row-footer .pattern-preview-button { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .sequence-row-footer > span { flex: 1; min-width: min(100%, 220px); }
 .rhythm-options { margin-top: 16px; border-top: 1px solid #304b3e; }

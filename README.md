@@ -2,7 +2,7 @@
 
 A personal audio studio built with React, Vite and Web Audio. Layer real nature
 recordings with music, instrumentals, vocals and your own sounds. The interface
-uses a dark emerald theme and English labels.
+uses black/charcoal surfaces, restrained neon highlights and English labels.
 
 This is an independent personal project. StemForge audio outputs can be imported
 as files; there is no direct separation API connection.
@@ -37,6 +37,27 @@ Hash navigation supports direct links, reload and browser Back/Forward without
 server rewrites. Legacy `#studio`, `#rhythm`, `#arrangement` and `#saved-mixes`
 links still work. Empty, unknown and `#my-sounds` links open Studio. Pages have
 one h1, an active navigation link, a distinct document title and main focus.
+
+## Black studio layout
+
+The desktop frame follows a music-workspace layout: navigation and the current
+project/layers sit on the left, the active page occupies the central canvas, and
+Studio's sound library/import tools form a separate right column. Intermediate
+widths use an icon rail; phones use a compact top navigation. Navigation labels,
+current-page state, keyboard focus and direct page links remain available.
+
+The player stays fixed along the bottom, with project information on the left,
+play/restart/skip controls and seeking in the center, and Master on the right.
+Phone controls reflow within the same player. Its measured height is reserved
+below the page so final controls and forms remain reachable. Exact-time entry
+opens above the player. Skip links reach the main content or playback controls.
+
+Black and neutral gray are the main surfaces. Lime marks active navigation and
+primary actions; cyan, purple and pink identify sound roles and selected audio.
+Waveforms, rhythm hits and timeline cues carry color without tinting whole panels.
+StudioTheme.css centralizes these surface/role rules and index.css owns tokens.
+The layout update does not change the audio engine, saved-data format, import,
+clip/sample regions, rhythm, arrangement, section looping or WAV rendering.
 
 ## Shared listening controls
 
@@ -336,7 +357,8 @@ The existing eight Focus Session tests are checked separately.
 
 ## Source responsibilities
 
-- App.jsx and StudioPages.css: four-page shell and persistent transport layout.
+- App.jsx and StudioPages.css: sidebar, four-page canvas and fixed bottom player.
+- StudioTheme.css and index.css: neutral surfaces and neon role/selection tokens.
 - hooks/useStudio.js: shared state, actions, persistence and engine lifecycle.
 - components/ClipEditor.jsx and WaveformSelector.jsx: draft region editing.
 - components/StepSequencer.jsx: rhythm controls, audition and tail feedback.
@@ -354,12 +376,18 @@ The existing eight Focus Session tests are checked separately.
 
 ## Source handoff
 
-This seek update is based on main `07847fe`, the merge of the 129-test loop/WAV
-release (`b3ecff8`). It keeps that release and adds the shared listening controls.
-The handoff contains source, documentation and tests. Apply on a clean branch,
-run tests/lint/build and review before committing. No dependencies, audio assets
-or saved-project schema changes are needed. A separate review server can run
-with `npm run dev -- --port 5174` to keep production browser data separate.
+This visual update is based on main `84e42f8`, the merge of shared-seek commit
+`dfb911c`. It preserves the 142 audio/studio tests and the separate eight Focus
+Session tests. The handoff contains only UI source, CSS and documentation.
+Apply on a clean branch, run tests/lint/build, and inspect all four pages before
+committing. No dependencies, audio assets or storage-schema changes are needed.
+
+Native Chromium checks cover fixed-player geometry and neutral panel colors on
+all four pages, desktop/rail/mobile navigation, import from the header, sample
+editing, timeline keyboard edits, saving/opening/reloading imported audio, an
+unobscured final form and exact-time popover, plus the existing seek/loop/export
+flow. Responsive checks include breakpoints from 320 to 1920 pixels. Safari,
+Firefox and physical mobile devices are not verified in this environment.
 
 ## Included audio and deployment
 
