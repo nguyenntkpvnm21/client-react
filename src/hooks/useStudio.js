@@ -1,3 +1,5 @@
+import { initialLoopRegion, validateLoopRegion } from '../lib/loopRegion.js';
+import { checkExportCanceled, exportFilename, renderArrangement } from '../lib/renderArrangement.js';
 import { enableRhythmTrack, rhythmMetadata, rhythmRegion } from '../lib/rhythmState.js';
 import { arrangementMetadata, validateLength, validatePlacement } from '../lib/arrangementState.js';
 import { DEFAULT_BPM, sequenceMetadata, validBpm } from '../lib/sequencerState.js';
@@ -23,6 +25,11 @@ function withSources(tracks) {
 
 export default function useStudio() {
   const [mix, setMix] = useState(initialMix);
+  const [loopSection, setLoopSectionState] = useState(() => initialLoopRegion(arrangementMetadata(mix.arrangement).duration));
+  const loopRef = useRef(loopSection);
+  const [exportState, setExportState] = useState(null);
+  const exportJob = useRef(null);
+  const exportUrl = useRef(null);
   const [status, setStatus] = useState('ready');
   const [elapsed, setElapsed] = useState(0);
   const [currentStep, setCurrentStep] = useState(null);
@@ -95,9 +102,9 @@ export default function useStudio() {
     }, 50);
     const visibility = () => {
       if (document.hidden) player.stopPreview();
-      if (document.hidden && player.playing && player.isSequencing()) {
+      if (document.hidden && player.playing && (player.isSequencing() || player.loopRegion.enabled)) {
         player.pause();
-        setNotice('Pattern paused while this tab was hidden. Press Play to continue.');
+        setNotice((player.loopRegion.enabled ? 'Section playback' : 'Pattern') + ' paused while this tab was hidden. Press Play to continue.');
       }
     };
     document.addEventListener('visibilitychange', visibility);
@@ -108,6 +115,8 @@ export default function useStudio() {
       projectLock.current = false;
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', visibility);
+      exportJob.current?.abort();
+      if (exportUrl.current) URL.revokeObjectURL(exportUrl.current);
       player.dispose();
     };
   }, []);
@@ -180,7 +189,7 @@ export default function useStudio() {
     if (projectLock.current) return;
     const wasPlaying = statusRef.current === 'playing';
     engine.current.restart();
-    setElapsed(0);
+    setElapsed(engine.current.position());
     if (wasPlaying) await togglePlayback();
   }
 
@@ -266,6 +275,7 @@ export default function useStudio() {
         const loaded = await readSavedMix(data.id);
         if (!alive.current || player.disposed) return false;
         const oldIds = mixRef.current.tracks.filter((track) => !track.catalogId).map((track) => track.id);
+        resetLoop(arrangementMetadata(loaded.project.mix.arrangement).duration);
         player.restart();
         for (const id of new Set([...player.buffers.keys(), ...player.pending.keys()])) player.forget(id);
         setElapsed(0);
@@ -422,6 +432,7 @@ export default function useStudio() {
   function setArrangementLength(value) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
     const duration = validateLength(value, mixRef.current.tracks);
+    resetLoop(duration);
     engine.current.restart();
     setElapsed(0);
     setCurrentStep(null);
@@ -441,6 +452,12 @@ export default function useStudio() {
   }
 
   async function playArrangement() {
+    if (projectLock.current || importLock.current || booting) return;
+    if (loopRef.current.enabled) {
+      storeLoop({ ...loopRef.current, enabled: false });
+      engine.current.seek(0);setElapsed(0);
+      await togglePlayback();return;
+    }
     const config = arrangementMetadata(mixRef.current.arrangement);
     if (config.enabled && (statusRef.current === 'playing' || statusRef.current === 'loading')) { await togglePlayback(); return; }
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
@@ -462,11 +479,95 @@ export default function useStudio() {
       const next = { ...current, arrangement: { enabled: true, duration } };
       engine.current.pause();
       engine.current.setArrangement(next.arrangement);
+      if (loopRef.current.enabled && (value < loopRef.current.start || value >= loopRef.current.end)) storeLoop({ ...loopRef.current, enabled: false });
       const position = engine.current.seek(value);
       changeMix(next);
       setElapsed(position);setCurrentStep(null);setPreview(null);setNotice('');
       if (play && position < duration) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
     } catch (error) { if (alive.current) setNotice(error.message); }
+  }
+
+  function storeLoop(next) {
+    engine.current.setLoopRegion(next);
+    loopRef.current = next;setLoopSectionState(next);
+  }
+
+  function resetLoop(duration) { storeLoop(initialLoopRegion(duration)); }
+
+  async function setLoopSection(value) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    const current = mixRef.current;
+    const next = validateLoopRegion({ ...loopRef.current, ...value }, arrangementMetadata(current.arrangement).duration);
+    const resume = next.enabled && statusRef.current === 'playing';
+    storeLoop(next);setPreview(null);
+    if (next.enabled) engine.current.seek(next.start);
+    setElapsed(engine.current.position());
+    if (resume) {
+      try { await engine.current.play(withSources(current.tracks), files.current, current.master, current.bpm, current.arrangement); }
+      catch (error) { if (alive.current) setNotice(error.message); }
+    }
+    return true;
+  }
+
+  async function playLoop() {
+    if (projectLock.current || importLock.current || booting) return;
+    if (loopRef.current.enabled && ['playing', 'loading'].includes(statusRef.current)) { await togglePlayback();return; }
+    try {
+      const current = mixRef.current;
+      const next = { ...current, arrangement: { ...arrangementMetadata(current.arrangement), enabled: true } };
+      const region = validateLoopRegion({ ...loopRef.current, enabled: true }, next.arrangement.duration);
+      const wasLoop = loopRef.current.enabled;
+      engine.current.pause();engine.current.setArrangement(next.arrangement);storeLoop(region);
+      if (!wasLoop || engine.current.position() < region.start || engine.current.position() >= region.end) engine.current.seek(region.start);
+      changeMix(next);setPreview(null);setNotice('');
+      await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
+    } catch (error) { if (alive.current) setNotice(error.message); }
+  }
+
+  async function disableLoop() {
+    if (projectLock.current || importLock.current || booting) return;
+    const resume = statusRef.current === 'playing';
+    storeLoop({ ...loopRef.current, enabled: false });setElapsed(engine.current.position());
+    if (resume) await togglePlayback();
+  }
+
+  function cancelExport() {
+    if (!exportJob.current) return;
+    exportJob.current.abort();
+    setExportState((previous) => ({ ...previous, stage: 'Canceling export…', canceling: true }));
+  }
+
+  async function exportArrangement(name) {
+    if (projectLock.current || importLock.current || booting || !mixRef.current.tracks.length) return;
+    const controller = new AbortController();exportJob.current = controller;
+    projectLock.current = true;setProjectBusy(true);
+    closeClip();engine.current.pause();setElapsed(engine.current.position());setNotice('');
+    if (exportUrl.current) { URL.revokeObjectURL(exportUrl.current);exportUrl.current = null; }
+    const filename = exportFilename(name);
+    setExportState({ active: true, stage: 'Loading audio', progress: 0, filename });
+    try {
+      const snapshot = serializeMix(mixRef.current);
+      const tracks = withSources(snapshot.tracks), buffers = new Map();
+      if (!globalThis.OfflineAudioContext && !globalThis.webkitOfflineAudioContext) throw new Error('WAV export is not available in this browser. Try Chrome, Edge, Firefox or Safari.');
+      for (let index = 0; index < tracks.length; index += 1) {
+        checkExportCanceled(controller.signal);
+        buffers.set(tracks[index].id, await engine.current.load(tracks[index], files.current[tracks[index].id]));
+        if (alive.current && !controller.signal.aborted) setExportState({ active: true, stage: 'Loading audio', progress: .15 * (index + 1) / tracks.length, filename });
+      }
+      const blob = await renderArrangement({ mix: { ...snapshot, tracks }, buffers, signal: controller.signal,
+        onProgress: (progress) => { if (alive.current && !controller.signal.aborted) setExportState({ active: true, filename, ...progress }); } });
+      checkExportCanceled(controller.signal);
+      if (!alive.current) return;
+      const url = URL.createObjectURL(blob);exportUrl.current = url;
+      setExportState({ active: false, filename, url, stage: 'WAV ready', progress: 1 });
+      const link = document.createElement('a');link.href = url;link.download = filename;document.body.append(link);link.click();link.remove();
+      setNotice('WAV ready. Playback remains paused at your previous position.');
+    } catch (error) {
+      if (alive.current) setExportState({ active: false, filename, error: error.name === 'AbortError' ? 'Export canceled. No file was created.' : error.message || 'Export failed. Try again.' });
+    } finally {
+      exportJob.current = null;projectLock.current = false;
+      if (alive.current) setProjectBusy(false);
+    }
   }
 
   function clearSolos() {
@@ -476,6 +577,7 @@ export default function useStudio() {
 
   function freeMix() {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
+    resetLoop(arrangementMetadata(mixRef.current.arrangement).duration);
     engine.current.restart();
     setElapsed(0);
     setCurrentStep(null);
@@ -507,7 +609,7 @@ export default function useStudio() {
 
   const activeProject = savedMixes.find((project) => project.id === activeProjectId);
   const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
-  return { ...mix, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
+  return { ...mix, loopSection, setLoopSection, playLoop, disableLoop, exportState, exportArrangement, cancelExport, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
     savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
     editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm,
     busy: booting || importing || rhythmBusy || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,

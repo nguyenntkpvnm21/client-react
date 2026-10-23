@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 111 tests. No additional testing dependency is required.
+The automated suite has 129 tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -26,7 +26,7 @@ The automated suite has 111 tests. No additional testing dependency is required.
 | --- | --- |
 | `#/studio` | Import recordings, browse sounds, balance layers and edit normal clips. |
 | `#/rhythm` | Choose rhythm samples, edit steps and audition individual patterns. |
-| `#/arrangement` | Arrange tracks on a shared timeline with entry, exit and fades. |
+| `#/arrangement` | Arrange tracks, loop a listening section and export the composition as WAV. |
 | `#/saved-mixes` | Save, open, update, rename and delete named snapshots. |
 
 Only the selected page is rendered; the audio engine, current mix and shared
@@ -187,6 +187,53 @@ old sources, rhythm hits and completion timers before rebuilding at the chosen
 time. Local source offsets, fades, rhythm phase and Entry/Exit limits still apply.
 The playback position is temporary and is not included in saved snapshots.
 
+### Loop a listening section
+
+Listen to a section sits above the ruler. Drag across its strip to select a new
+range, drag the center to move it, or drag either edge. The two handles occupy
+separate vertical rows so small selections remain selectable on touch screens.
+Snap to beats applies here as well. Arrow keys move selection controls; Shift
+makes 0.01-second adjustments. Exact section times and keyboard help expands
+numeric fields when needed. Sections must be at least 0.25 seconds long.
+
+Play loop enables Arrangement and repeats that region. Pause loop preserves the
+position; Play resumes inside the section. Restart returns to the section start.
+Turning the loop off continues at the current position when playing. Play full
+arrangement exits the loop and starts the composition at zero. A ruler seek
+inside the range keeps looping; a seek outside it turns looping off.
+
+The audio clock schedules each wrap ahead of time. Each pass keeps the original
+source offsets, Entry/Exit, fades and beat-grid coordinates; samples cannot ring
+past the section end. Solo, Mute, volume, pattern and placement edits remain live.
+BPM changes take effect at the next section wrap. Missed background callbacks skip
+old passes rather than producing a burst; section playback pauses in hidden tabs.
+
+This is a session-only audition region. It does not trim source recordings,
+change layer timing or limit an export. Navigation preserves it. Reload, opening
+a saved mix, changing composition length and switching to Free mix reset it.
+
+### Export the full arrangement
+
+Export your arrangement creates a stereo 44.1 kHz, 16-bit PCM WAV entirely in the
+browser. The file covers zero through the composition end, regardless of the
+current transport position, Free mix mode or listening loop. Solo, explicit Mute,
+layer/Master levels, normal clip Loop, independent rhythm samples, tail policies,
+Entry/Exit and fades all apply. A one-shot does not automatically repeat.
+
+Playback pauses and keeps its position. Editing and project changes are locked
+while export runs; navigation and Cancel export stay available. The offline
+renderer shares source/voice/envelope scheduling and the master compressor with
+live playback. It does not record in real time or add normalization/mastering.
+The result downloads with the chosen name; a Download link remains available if
+the browser blocks automatic downloads. A new export replaces the previous link.
+
+Progress shows loading, rendering and WAV encoding. Cancellation discards the
+result and creates no file. A browser's native offline render cannot be aborted
+mid-computation, so Canceling may remain visible until that stage finishes.
+Large exports use more memory (about 50.5 MiB of PCM WAV for five minutes, plus
+working audio buffers). No server, account, new package or saved-project schema
+change is required.
+
 Every Arrangement row has Solo and Mute/Unmute controls, using the same saved
 controls as Studio. Solo isolates selected layers while preserving their timings
 and fades; it does not restart sources or move the playhead. Multiple solos are
@@ -195,7 +242,7 @@ without changing mute or volume settings. Use Solo and the time ruler together
 to listen to the entrance, exit or fade you are editing.
 
 There is currently one placement per layer. Multiple clips on one track, source
-slip editing, drag duplication, effects and rendered audio export are not added.
+slip editing, drag duplication and effects are not added.
 
 ## Saved mixes and browser storage
 
@@ -220,14 +267,18 @@ Saved mixes contain configurations, not a rendered WAV/MP3 file.
 
 ## Verification
 
-The 111 tests cover migration, separate regions, clear/enable preservation,
+The 129 tests cover migration, separate regions, clear/enable preservation,
 selection bounds and stereo detection, timeline bounds/snap/fades, mono/ringing
 scheduling, bounded overlaps, finite isolated previews, cancellation, future
 entries, source offsets, pause/resume across tempo changes, finite completion,
 live controls, snapshots, shared audio references and source cleanup. New cases
 cover seeks into fades, silence before/after a window, rhythm phase/tails,
 canceling stale decodes, clean end-of-timeline selection, Solo/Mute routing,
-live finite-audition edits and migration of nested sequence sample bounds.
+live finite-audition edits and migration of nested sequence sample bounds. Section
+tests check exact wraps, source offsets, original fades, restored rhythmic tails,
+future-edit gating, queued tempo, live routing and source/timer cleanup. Export
+tests check full-length scheduling, sample independence, one-shots, PCM headers,
+interleaving, clipping, cancellation and failure cleanup.
 
 Browser checks exercise mouse and touch waveform selection, canceled gestures,
 zoom and beat-length shortcuts, cut/ring auditions, keyboard timeline controls,
@@ -237,6 +288,10 @@ layouts at 320, 390, 768, 1024 and 1440 pixels.
 The listening-flow browser check also exercised ruler mouse/keyboard playback,
 Solo/Mute/Clear without source restarts, live rhythm audition edits, off-row editing,
 collapsed pattern options, independent samples and save/reload without autoplay.
+The export browser check verifies audio-clock wrap spacing, mouse/keyboard/touch
+selection, outside-section seek, full-arrangement playback, actual downloaded WAV
+length and audio energy in intro/fades/body/outro, cut/ring output, canceled native
+rendering, reload reset and all four page widths from 320 to 1440 pixels.
 
 ## Source responsibilities
 
@@ -245,6 +300,9 @@ collapsed pattern options, independent samples and save/reload without autoplay.
 - components/ClipEditor.jsx and WaveformSelector.jsx: draft region editing.
 - components/StepSequencer.jsx: rhythm controls, audition and tail feedback.
 - components/Arrangement.jsx and TimelineClip.jsx: shared timeline interactions.
+- components/ArrangementSection.jsx and ArrangementExport.jsx: listening/export UI.
+- lib/loopRegion.js and arrangementLooper.js: session bounds and scheduled wraps.
+- lib/audioGraph.js and renderArrangement.js: shared audio graph and WAV rendering.
 - lib/audioEngine.js: decoded buffers, normal playback and isolated auditions.
 - lib/stepScheduler.js: scheduled rhythm voices and queued tempo changes.
 - lib/rhythmState.js: independent sample metadata, initialization and tail policy.
@@ -254,14 +312,13 @@ collapsed pattern options, independent samples and save/reload without autoplay.
 
 ## Source handoff
 
-This update is based on main `884bb0a` plus the delivered four-page/Arrangement
-source. The subsequently reported 82-test local revision was not available on
-GitHub; its described independent-region and preserved-pattern behavior has
-been implemented here and checked with the expanded suite. Commit local work
-before applying this source bundle on a new branch, and review any additional
-local changes rather than discarding them. For the first review, run
-`npm run dev -- --port 5174` so the existing browser data at port 5173 stays
-separate; compatibility with the unavailable local revision cannot be verified.
+This update is based on main `57e4d5612f15fef2478649561e0c29a40cad0b00`
+(`feat: add timeline audition and simplify rhythm controls`), the 111-test release.
+It preserves the four pages, timeline seek, Solo/Mute and simplified Rhythm.
+The handoff patch contains only source, documentation and tests; audio files,
+dependencies and the lockfile remain unchanged. Apply on a clean branch, run the
+checks above, then review and commit. For a separate browser-storage review, run
+`npm run dev -- --port 5174`.
 
 ## Included audio and deployment
 
