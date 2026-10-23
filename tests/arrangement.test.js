@@ -182,14 +182,16 @@ test('seeking cancels old sources and resumes the correct source offset and fade
 });
 
 test('seeking before entry preserves its remaining delay and seeking after exit keeps only the composition clock', async () => {
-  const { engine, sources } = setup();
+  const { engine, sources, context } = setup();
   engine.setArrangement(config);engine.seek(1);
   await engine.play([track()], { rain: file }, 75, 120, config);
   close(sources[0].starts[0][0], 1.06);close(sources[0].starts[0][1], 2);
   const count = sources.length;engine.seek(5.5);
   await engine.play([track()], { rain: file }, 75, 120, config);
   assert.equal(sources.length, count);assert.equal(engine.playing, true);
-  close(engine.position(), 5.5 - .06);engine.dispose();
+  // Hold the requested position during the scheduling lead-in, then advance.
+  close(engine.position(), 5.5);context.currentTime = .06;close(engine.position(), 5.5);
+  context.currentTime = .26;close(engine.position(), 5.7);engine.dispose();
 });
 
 test('seeking resets rhythmic phase to the target timeline and restores only the appropriate sample tail', async () => {

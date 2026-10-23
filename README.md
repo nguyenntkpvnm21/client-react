@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 129 tests. No additional testing dependency is required.
+The automated suite has 142 tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -37,6 +37,39 @@ Hash navigation supports direct links, reload and browser Back/Forward without
 server rewrites. Legacy `#studio`, `#rhythm`, `#arrangement` and `#saved-mixes`
 links still work. Empty, unknown and `#my-sounds` links open Studio. Pages have
 one h1, an active navigation link, a distinct document title and main focus.
+
+## Shared listening controls
+
+The persistent transport has a position slider on all four pages. Click or drag
+it to choose where to listen; touch works as well. The displayed time follows
+the draft during dragging, and the audio engine seeks once on release. Canceling
+a gesture leaves playback at its original clock. Arrows move five seconds,
+Shift+Arrow moves 0.1 seconds, Home/End select the slider bounds, and Escape
+cancels a draft. Back/Forward five-second buttons sit beside Play and Restart.
+
+Click the current time to open Go to time. Enter seconds (`90`, `90.5`) or
+minute notation (`1:30`, `1:30.5`). Invalid input leaves playback unchanged.
+Escape or Cancel closes the form and restores focus to the time button.
+
+A playing seek continues playing; a paused seek only moves the position. Seeks
+cancel old sources and queued rhythm hits, load any missing durations and rebuild
+at the correct source offsets, arrangement envelopes and grid phase. Newer seeks
+supersede older decode requests. Paused seeks stay paused even when repeated
+before loading finishes. Existing Solo/Mute/volume changes during loading apply
+when playback resumes. The playhead holds its target during the short audio
+scheduling lead-in instead of briefly moving backward.
+
+Arrangement uses the composition duration. Seeking inside the listening loop
+keeps that loop; outside disables it. Seeking from Studio, Rhythm or Saved mixes
+does not enable Arrangement. Finite Free mix uses the longest selected normal
+clip after durations load. Repeating Free mix shows infinity and offers a growing
+slider window; Go to time can choose a later position without adding a stop time.
+An unknown total shows `--:--` until audio loads. Seeking to a finite end stops
+there; pressing Play again starts from the beginning.
+
+Position is temporary. Seeking does not change clip/sample bounds, placements,
+BPM, saved snapshots or the full duration of a WAV export. Isolated sample/pattern
+auditions remain separate from the shared mix transport.
 
 ## Studio and importing
 
@@ -267,7 +300,7 @@ Saved mixes contain configurations, not a rendered WAV/MP3 file.
 
 ## Verification
 
-The 129 tests cover migration, separate regions, clear/enable preservation,
+The 142 tests cover migration, separate regions, clear/enable preservation,
 selection bounds and stereo detection, timeline bounds/snap/fades, mono/ringing
 scheduling, bounded overlaps, finite isolated previews, cancellation, future
 entries, source offsets, pause/resume across tempo changes, finite completion,
@@ -293,6 +326,14 @@ selection, outside-section seek, full-arrangement playback, actual downloaded WA
 length and audio energy in intro/fades/body/outro, cut/ring output, canceled native
 rendering, reload reset and all four page widths from 320 to 1440 pixels.
 
+The shared-seek tests additionally check time parsing, cropped/unknown/repeating
+bounds, paused and playing seeks, synchronized stems, fade/grid restoration,
+finite completion, canceled/stale loading and current level routing. The native
+Chromium check covers mouse drag-once behavior, touch, keyboard, exact time,
+invalid input/focus, all four pages, section-loop boundaries, rapid paused seeks,
+repeating Free mix, unchanged persisted metadata and full-length WAV output.
+The existing eight Focus Session tests are checked separately.
+
 ## Source responsibilities
 
 - App.jsx and StudioPages.css: four-page shell and persistent transport layout.
@@ -301,6 +342,7 @@ rendering, reload reset and all four page widths from 320 to 1440 pixels.
 - components/StepSequencer.jsx: rhythm controls, audition and tail feedback.
 - components/Arrangement.jsx and TimelineClip.jsx: shared timeline interactions.
 - components/ArrangementSection.jsx and ArrangementExport.jsx: listening/export UI.
+- components/PlaybackSeek.jsx and lib/playbackTimeline.js: shared seek controls and time bounds.
 - lib/loopRegion.js and arrangementLooper.js: session bounds and scheduled wraps.
 - lib/audioGraph.js and renderArrangement.js: shared audio graph and WAV rendering.
 - lib/audioEngine.js: decoded buffers, normal playback and isolated auditions.
@@ -312,13 +354,12 @@ rendering, reload reset and all four page widths from 320 to 1440 pixels.
 
 ## Source handoff
 
-This update is based on main `57e4d5612f15fef2478649561e0c29a40cad0b00`
-(`feat: add timeline audition and simplify rhythm controls`), the 111-test release.
-It preserves the four pages, timeline seek, Solo/Mute and simplified Rhythm.
-The handoff patch contains only source, documentation and tests; audio files,
-dependencies and the lockfile remain unchanged. Apply on a clean branch, run the
-checks above, then review and commit. For a separate browser-storage review, run
-`npm run dev -- --port 5174`.
+This seek update is based on main `07847fe`, the merge of the 129-test loop/WAV
+release (`b3ecff8`). It keeps that release and adds the shared listening controls.
+The handoff contains source, documentation and tests. Apply on a clean branch,
+run tests/lint/build and review before committing. No dependencies, audio assets
+or saved-project schema changes are needed. A separate review server can run
+with `npm run dev -- --port 5174` to keep production browser data separate.
 
 ## Included audio and deployment
 
