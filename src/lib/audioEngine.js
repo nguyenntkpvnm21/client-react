@@ -1,4 +1,5 @@
 import { ArrangementLooper } from './arrangementLooper.js';
+import { playbackTimeline } from './playbackTimeline.js';
 import { validateLoopRegion } from './loopRegion.js';
 import { createMasterGraph, releaseSource, scheduleNormalTrack } from './audioGraph.js';
 import { findSoundRegion, waveformPeaks } from './audioSelection.js';
@@ -87,7 +88,7 @@ export class AudioEngine {
   }
 
   position() {
-    return this.playing && this.looper ? this.looper.position() : this.playing ? Math.max(0, this.context.currentTime - this.anchor) : this.offset;
+    return this.playing && this.looper ? this.looper.position() : this.playing ? Math.max(this.offset, this.context.currentTime - this.anchor) : this.offset;
   }
 
   isSequencing() { return this.tracks.some(isSequenced); }
@@ -300,11 +301,32 @@ export class AudioEngine {
   seek(value) {
     if (!Number.isFinite(value)) throw new Error('Choose a valid playback position in seconds.');
     this.pause(); // Cancels old decode requests, queued hits and completion timers.
-    this.offset = Math.max(0, Math.min(value, this.arrangement.enabled ? this.arrangement.duration : Infinity));
+    const timeline = playbackTimeline(this.tracks, Object.fromEntries([...this.buffers].map(([id, buffer]) => [id, { duration: buffer.duration }])), this.arrangement, this.bpm);
+    this.offset = Math.max(0, Math.min(value, timeline.duration ?? Infinity));
     this.sequencePhase = null;
     this.sequenceTails = null;
-    if (this.arrangement.enabled && this.offset === this.arrangement.duration) this.onState('finished');
+    if (timeline.duration !== null && this.offset === timeline.duration) this.onState('finished');
     return this.offset;
+  }
+
+  async seekTo(value, tracks, files, master, bpm, arrangement, resume = false) {
+    if (!Number.isFinite(value) || value < 0) throw new Error('Choose a valid playback position in seconds.');
+    this.pause();
+    this.setArrangement(arrangement);this.setBpm(bpm);this.setTracks(tracks);this.setMaster(master);
+    this.seek(value);
+    const request = ++this.request;
+    this.onState('loading');
+    try { await Promise.all([resume ? this.ensureContext().resume() : Promise.resolve(), ...tracks.map((track) => this.load(track, files[track.id]))]); }
+    catch (error) {
+      if (this.disposed || request !== this.request) return false;
+      this.pause();throw error;
+    }
+    if (this.disposed || request !== this.request) return false;
+    // Decode first so paused seeks know the actual cropped one-shot duration too.
+    const position = this.seek(value);
+    const timeline = playbackTimeline(this.tracks, Object.fromEntries([...this.buffers].map(([id, buffer]) => [id, { duration: buffer.duration }])), this.arrangement, this.bpm);
+    if (resume && (timeline.duration === null || position < timeline.duration)) await this.play(this.tracks, files, this.master, this.bpm, this.arrangement);
+    return true;
   }
 
   forget(id) {

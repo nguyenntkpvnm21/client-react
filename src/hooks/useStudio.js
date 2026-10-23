@@ -56,6 +56,7 @@ export default function useStudio() {
   const importLock = useRef(false);
   const projectLock = useRef(false);
   const statusRef = useRef('ready');
+  const seekIntent = useRef(null);
 
   useEffect(() => {
     alive.current = true;
@@ -175,6 +176,7 @@ export default function useStudio() {
 
   async function togglePlayback() {
     if (statusRef.current === 'playing' || statusRef.current === 'loading') {
+      seekIntent.current = null;
       engine.current.pause();
       setElapsed(engine.current.position());
       return;
@@ -487,6 +489,24 @@ export default function useStudio() {
     } catch (error) { if (alive.current) setNotice(error.message); }
   }
 
+  async function seekPlayback(value) {
+    if (projectLock.current || importLock.current || booting || !mixRef.current.tracks.length) return false;
+    const current = mixRef.current;
+    const resume = statusRef.current === 'playing' || (statusRef.current === 'loading' && (seekIntent.current?.resume ?? true));
+    if (!Number.isFinite(value) || value < 0) { setNotice('Choose a valid playback position in seconds.');return false; }
+    if (current.arrangement.enabled && loopRef.current.enabled && (value < loopRef.current.start || value >= loopRef.current.end)) storeLoop({ ...loopRef.current, enabled: false });
+    const job = { resume };seekIntent.current = job;
+    setNotice('');setPreview(null);
+    try {
+      const pending = engine.current.seekTo(value, withSources(current.tracks), files.current, current.master, current.bpm, current.arrangement, resume);
+      setElapsed(engine.current.position());
+      const applied = await pending;
+      if (alive.current && applied) { setElapsed(engine.current.position());setCurrentStep(engine.current.currentStep()); }
+      return applied;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { if (seekIntent.current === job) seekIntent.current = null; }
+  }
+
   function storeLoop(next) {
     engine.current.setLoopRegion(next);
     loopRef.current = next;setLoopSectionState(next);
@@ -609,7 +629,7 @@ export default function useStudio() {
 
   const activeProject = savedMixes.find((project) => project.id === activeProjectId);
   const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
-  return { ...mix, loopSection, setLoopSection, playLoop, disableLoop, exportState, exportArrangement, cancelExport, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
+  return { ...mix, seekPlayback, loopSection, setLoopSection, playLoop, disableLoop, exportState, exportArrangement, cancelExport, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
     savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
     editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm,
     busy: booting || importing || rhythmBusy || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,

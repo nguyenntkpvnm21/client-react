@@ -1,6 +1,6 @@
 import { isSequenced, sequenceMetadata } from '../lib/sequencerState.js';
-import { formatTime } from '../lib/studioState.js';
 import Icon from './Icon';
+import PlaybackSeek from './PlaybackSeek';
 
 export default function WorkspaceTransport({ studio }) {
   const active = studio.status === 'playing' || studio.status === 'loading';
@@ -17,10 +17,12 @@ export default function WorkspaceTransport({ studio }) {
       <div className="transport-left"><button type="button" className="play-button" disabled={studio.booting || (!active && studio.busy) || !studio.tracks.length} onClick={studio.togglePlayback}>
         <Icon name={active ? 'pause' : 'play'} size={19} />{studio.status === 'loading' ? 'Cancel loading' : active ? 'Pause mix' : 'Play mix'}</button>
         <button type="button" className="restart-button" aria-label="Restart mix" disabled={studio.busy || !studio.tracks.length} onClick={studio.restartPlayback}><Icon name="reset" size={19} /></button>
-        <span className="elapsed" aria-label="Mix playback position">{formatTime(studio.elapsed)}</span></div>
+        <button type="button" className="seek-skip" aria-label="Back 5 seconds" disabled={studio.booting || studio.projectBusy || studio.importing || !studio.tracks.length} onClick={() => studio.seekPlayback(Math.max(0, studio.elapsed - 5))}>−5s</button>
+        <button type="button" className="seek-skip" aria-label="Forward 5 seconds" disabled={studio.booting || studio.projectBusy || studio.importing || !studio.tracks.length} onClick={() => studio.seekPlayback(studio.elapsed + 5)}>+5s</button></div>
       <label className="master-level"><Icon name="volume" size={19} /><span>Master</span><input type="range" min="0" max="100" value={studio.master} style={{ '--level': studio.master + '%' }}
         onChange={(event) => studio.setMaster(Number(event.target.value))} disabled={studio.projectBusy} aria-label="Master volume" /><output>{studio.master}%</output></label>
       <span className="workspace-playback-status" role="status"><span className={'status-dot ' + (studio.status === 'playing' ? 'is-playing' : '')} />{status}</span>
+      <PlaybackSeek studio={studio} />
     </div>
     {studio.exportState?.active && <div className="workspace-export-progress"><span role="status">{studio.exportState.stage}</span><progress aria-label="Workspace export progress" max="1" value={studio.exportState.progress} /><button type="button" disabled={studio.exportState.canceling} onClick={studio.cancelExport}>{studio.exportState.canceling ? 'Canceling…' : 'Cancel export'}</button></div>}
     {studio.notice && <p className="workspace-notice" role="status">{studio.notice}</p>}
