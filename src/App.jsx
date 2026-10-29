@@ -14,6 +14,7 @@ import useStudio from './hooks/useStudio';
 import { pageFromHash, STUDIO_PAGES } from './lib/studioPages.js';
 import './StudioPages.css';
 import './StudioTheme.css';
+import './BeginnerUi.css';
 
 const pageIcons = { studio: 'layers', rhythm: 'rhythm', arrangement: 'timeline', 'saved-mixes': 'library' };
 
@@ -64,8 +65,8 @@ export default function App() {
     <main className={'app-main page-' + page.id} id="main-content" ref={mainRef} tabIndex={-1} aria-labelledby="page-title">
       <section className="page-heading"><div><p className="eyebrow">NATUREMIX / {page.label.toUpperCase()}</p><h1 id="page-title">{page.title}</h1><p>{page.description}</p></div><span className="page-mode"><span className="small-dot" />{studio.arrangement.enabled ? 'Arrangement' : 'Free mix'}</span></section>
       <div className="page-content">
-        {page.id === 'studio' && <><SceneStarters studio={studio} /><div className="studio-page-grid"><MixWorkspace studio={studio} />
-          <aside className="studio-sidebar" aria-label="Add sounds"><SoundLibrary studio={studio} /><SourcePool studio={studio} /><AudioImport studio={studio} role={role} setRole={setRole} inputRef={inputRef} chooseFiles={chooseFiles} /></aside>
+        {page.id === 'studio' && <><details className="starter-disclosure" open={!studio.tracks.length || undefined}><summary>Try a starter scene</summary><SceneStarters studio={studio} /></details><div className="studio-page-grid"><MixWorkspace studio={studio} />
+          <aside className="studio-sidebar" aria-label="Add sounds"><AudioImport studio={studio} role={role} setRole={setRole} inputRef={inputRef} chooseFiles={chooseFiles} /><SoundLibrary studio={studio} /><details className="sources-disclosure"><summary>Reuse a recording · {studio.sources.length} sources</summary><SourcePool studio={studio} /></details></aside>
         </div></>}
         {page.id === 'rhythm' && <StepSequencer studio={studio} />}
         {page.id === 'arrangement' && <Arrangement studio={studio} />}

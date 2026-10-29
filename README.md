@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 180 tests. No additional testing dependency is required.
+The automated suite has 183 tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -58,6 +58,25 @@ Waveforms, rhythm hits and timeline cues carry color without tinting whole panel
 StudioTheme.css centralizes these surface/role rules and index.css owns tokens.
 The layout update does not change the audio engine, saved-data format, import,
 clip/sample regions, rhythm, arrangement, section looping or WAV rendering.
+
+## Focused controls and clock times
+
+Studio opens on the mixer. Starter scenes and source reuse expand when needed;
+import stays next to the library. Mute, Solo and Repeat use readable labels.
+Arrangement keeps the timeline and clip edits visible, with optional listening
+loops, fade inputs, detailed help and secondary clip actions behind disclosures.
+Hidden help never changes playback mode, clip data or saved projects.
+
+Length, clip/sample boundaries, placement and listening-loop fields display m:ss
+and accept both `1:30` and `90`. Decimals such as `0:00.18` remain available for
+short samples and fades. The clock formatter removes redundant zeroes, handles
+minute rollover and preserves millisecond values in editable fields. Audio/state
+still uses seconds. Invalid input leaves applied settings unchanged.
+
+UI review used the direct clip-editing patterns documented by
+[Soundtrap](https://blog.soundtrap.com/?p=969) and
+[Ableton](https://www.ableton.com/en/live-manual/11/arrangement-view/).
+The three additional tests check clock display, rollover and parser round trips.
 
 ## Shared listening controls
 

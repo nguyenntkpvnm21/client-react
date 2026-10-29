@@ -1,5 +1,6 @@
 import { patternSummary, rhythmMetadata } from '../lib/rhythmState.js';
 import { placementMetadata } from '../lib/arrangementState.js';
+import { clockTime } from '../lib/timeFormat.js';
 import { useEffect, useRef, useState } from 'react';
 import { MAX_BPM, MIN_BPM, sequenceMetadata, stepSeconds, STEP_COUNT } from '../lib/sequencerState.js';
 import ClipEditor from './ClipEditor';
@@ -58,19 +59,19 @@ function SequenceRow({ track, studio }) {
     <div className="sequence-row-heading">
       <div className="sequence-sound"><span className="sequence-sound-icon"><Icon name={track.role === 'nature' ? 'leaf' : track.role} size={20} /></span>
         <div><h3 title={track.name}>{track.name}</h3><p>{sequence.enabled ? 'Rhythm' : 'Normal playback'}
-          {rhythm.sampleEnd != null ? ' · ' + (rhythm.sampleEnd - rhythm.sampleStart).toFixed(2) + ' s sample' : ' · Full recording sample'}
+          {rhythm.sampleEnd != null ? ' · ' + clockTime(rhythm.sampleEnd - rhythm.sampleStart, 3) + ' sample' : ''}
           {track.muted ? ' · Muted' : ''}</p></div></div>
       <div className="sequence-tools">
-        <button ref={editButton} type="button" disabled={studio.busy} aria-expanded={editing} aria-label={'Edit sample for ' + track.name}
-          onClick={() => editing ? studio.closeClip() : studio.openClip(track.id, 'sequencer')}>Edit sample</button>
         <button type="button" className={sequence.enabled ? '' : 'create-rhythm'} disabled={studio.busy}
           aria-pressed={rhythm.initialized ? sequence.enabled : undefined}
           aria-label={(sequence.enabled ? 'Turn off rhythm for ' : rhythm.initialized ? 'Turn on rhythm for ' : 'Create rhythm for ') + track.name}
           onClick={() => sequence.enabled ? studio.setSequenced(track.id, false) : studio.createRhythm(track.id)}>
           {sequence.enabled ? 'Rhythm on' : rhythm.initialized ? 'Rhythm off' : 'Create rhythm'}</button>
+        <button ref={editButton} type="button" disabled={studio.busy} aria-expanded={editing} aria-label={'Edit sample for ' + track.name}
+          onClick={() => editing ? studio.closeClip() : studio.openClip(track.id, 'sequencer')}>Edit sample</button>
       </div>
     </div>
-    {studio.arrangement.enabled && <p className="sequence-window">Entry {placement.start.toFixed(2)} s · Exit {(placement.end ?? studio.arrangement.duration).toFixed(2)} s · Hear rhythm ignores this window.</p>}
+    {studio.arrangement.enabled && <p className="sequence-window">Timeline {clockTime(placement.start, 2)}–{clockTime(placement.end ?? studio.arrangement.duration, 2)}</p>}
     {editing && <ClipEditor track={track} info={studio.details[track.id]} studio={studio} location="sequencer" />}
     {rhythm.initialized ? <>
       {!sequence.enabled && <p className="sequence-idle">Off in the mix. Your steps and sample are kept; you can edit or hear this rhythm here.</p>}
@@ -95,11 +96,10 @@ function SequenceRow({ track, studio }) {
         <div className="pattern-audition"><label>Sample tails<select aria-label={track.name + ' sample tails'} value={rhythm.tailMode} disabled={studio.busy} onChange={(event) => studio.setTailMode(track.id, event.target.value)}><option value="cut">Cut at next hit</option><option value="ring">Let samples ring</option></select></label>
           <button type="button" disabled={studio.busy} title="Replace steps with hits on 1, 5, 9 and 13; keep the sample" onClick={() => studio.quarterSteps(track.id)} aria-label={'Four beats for ' + track.name}>Four beats</button>
           <button type="button" disabled={studio.busy || count === 0} onClick={() => studio.clearSteps(track.id)} aria-label={'Clear ' + track.name + ' steps'}>Clear steps</button></div>
-        {summary?.cut && <p className="sample-tail-warning">The {summary.sample.length.toFixed(2)} s sample is longer than the {summary.shortest.toFixed(2)} s gap between hits. Choose Let samples ring to hear its full tail, or shorten it in Edit sample.</p>}
+        {summary?.cut && <p className="sample-tail-warning">Hits cut this sample short. Choose Let samples ring, or shorten it in Edit sample.</p>}
         {summary?.crowded && <p className="sample-tail-warning">This dense pattern may cut older tails. Use fewer hits or a shorter sample.</p>}
-        <p className="sequencer-help">Four beats replaces the steps with one hit on each beat. It keeps your sample and does not slice the recording.</p>
       </details>
-    </> : <p className="sequence-idle">Create rhythm makes four starter beats and plays the mix. Edit sample chooses the sound for each hit.</p>}
+    </> : <p className="sequence-idle">Create rhythm starts four beats. Then tap steps to make it yours.</p>}
   </article>;
 }
 
@@ -108,9 +108,9 @@ export default function StepSequencer({ studio }) {
   const active = studio.status === 'playing' || studio.status === 'loading';
   return <section className="sequencer panel" id="rhythm" aria-labelledby="sequencer-title">
     <div className="sequencer-heading"><div><p className="eyebrow">GIVE NATURE A RHYTHM</p><h2 id="sequencer-title">Make a rhythm.</h2>
-      <p className="sequencer-intro">Create a rhythm → tap steps → hear it. Edit sample to change its sound.</p></div>
+      <p className="sequencer-intro">Create rhythm, then tap the steps you want to hear.</p></div>
       <a className="sequencer-save" href="#/saved-mixes">{studio.activeProject ? (studio.dirty ? 'Save your changes' : 'View saved mix') : 'Save your mix'} <span aria-hidden="true">↗</span></a></div>
-    {studio.arrangement.enabled && <div className="rhythm-arrangement-banner"><div><strong>Arrangement is on</strong><p>Mix playback follows Entry/Exit and stops at {studio.arrangement.duration.toFixed(1)} s. Hear rhythm plays one row without these limits. Switching to Free mix stops playback and keeps your timings.</p></div><button type="button" disabled={studio.busy} onClick={studio.freeMix}>Switch to Free mix</button></div>}
+    {studio.arrangement.enabled && <div className="rhythm-arrangement-banner"><div><strong>Arrangement is on</strong><p>Mix follows the timeline and ends at {clockTime(studio.arrangement.duration)}. Hear rhythm previews one row.</p></div><button type="button" disabled={studio.busy} onClick={studio.freeMix}>Switch to Free mix</button></div>}
     <div className="sequencer-toolbar">
       <div className="sequencer-playback"><button type="button" className="play-button" disabled={studio.booting || (!active && studio.busy) || !studio.tracks.length} onClick={studio.togglePlayback}>
         <Icon name={active ? 'pause' : 'play'} size={18} />{studio.status === 'loading' ? 'Cancel loading' : active ? 'Pause full mix' : 'Play full mix'}</button>
@@ -121,9 +121,9 @@ export default function StepSequencer({ studio }) {
     <div className="sequencer-feedback" role="status">{studio.tempo.pending
       ? 'Playing at ' + studio.tempo.active + ' BPM. ' + studio.tempo.pending + ' BPM starts at the next loop.'
       : enabled.length ? 'Tap steps while listening. Lit steps play your sample.' : 'Start with Create rhythm on any sound. A short sample plays on all four beats.'}
-      {enabled.length > 0 && <span>{(stepSeconds(studio.tempo.active) * STEP_COUNT).toFixed(2)} s per loop</span>}</div>
+      {enabled.length > 0 && <span>{clockTime(stepSeconds(studio.tempo.active) * STEP_COUNT, 2)} per loop</span>}</div>
     <div className="sequence-rows">{studio.tracks.map((track) => <SequenceRow key={track.id} track={track} studio={studio} />)}</div>
     {!studio.tracks.length && <p className="sequencer-help">Add a sound from the library or import a recording to create your first rhythm.</p>}
-    <p className="sequencer-help">Play full mix combines your rhythms with the other layers. Rhythm off returns that layer to its normal clip and keeps your work. Speed changes start at the next loop.</p>
+    <details className="workspace-help"><summary>Rhythm help</summary><p>Edit sample chooses the sound for each hit. Lit steps play; dark steps rest. Hear rhythm previews one row. Play full mix includes all clips.</p><p>Rhythm off keeps your steps and sample. Speed changes start at the next loop. Pattern options contains Four beats, Clear steps and sample tails.</p></details>
   </section>;
 }

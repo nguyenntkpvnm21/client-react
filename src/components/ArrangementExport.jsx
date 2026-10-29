@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { audibleGain } from '../lib/studioState.js';
 import { isSequenced, sequenceMetadata } from '../lib/sequencerState.js';
+import { clockTime } from '../lib/timeFormat.js';
 
 export default function ArrangementExport({ studio }) {
   const [name, setName] = useState(studio.activeProject?.name || 'NatureMix arrangement');
@@ -8,8 +9,8 @@ export default function ArrangementExport({ studio }) {
   const silent = !studio.master || studio.tracks.every((track) => !audibleGain(track, studio.tracks) || (isSequenced(track) && !sequenceMetadata(track).steps.some(Boolean)));
   const solo = studio.tracks.some((track) => track.solo);
   return <section className="arrangement-export" aria-labelledby="export-title">
-    <div><h3 id="export-title">Export your arrangement</h3><p>A stereo WAV of the full {studio.arrangement.duration}-second composition, from the beginning. Includes layer timing, fades, rhythm, Solo/Mute and Master volume.</p>
-      <p>44.1 kHz · 16-bit PCM · about {(studio.arrangement.duration * 44100 * 4 / 1048576).toFixed(1)} MB. Playback pauses during export. The listening loop does not limit the file.</p></div>
+    <div><h3 id="export-title">Download audio</h3><p>Your full {clockTime(studio.arrangement.duration)} mix as a WAV file. Playback pauses while preparing it.</p>
+      <details className="workspace-help"><summary>Audio format &amp; export details</summary><p>Stereo · 44.1 kHz · 16-bit PCM · about {(studio.arrangement.duration * 44100 * 4 / 1048576).toFixed(1)} MB. Includes timing, fades, rhythm and current levels. The listening loop does not limit the file.</p></details></div>
     {studio.tracks.length > 0 && (silent ? <p className="export-routing">Your current levels and patterns produce a silent file. Check Master, Mute and Solo before exporting.</p> : solo ? <p className="export-routing">Solo is on. This export includes only soloed layers; muted solos stay silent.</p> : null)}
     <form onSubmit={(event) => { event.preventDefault();void studio.exportArrangement(name); }}>
       <label htmlFor="export-filename">File name<input id="export-filename" value={name} maxLength="100" disabled={studio.projectBusy} onChange={(event) => setName(event.target.value)} /></label>

@@ -1,16 +1,18 @@
 import { useRef, useState } from 'react';
 import { editLoopRegion, MIN_LOOP_SECONDS } from '../lib/loopRegion.js';
+import { clockTime } from '../lib/timeFormat.js';
+import { parsePlaybackTime } from '../lib/playbackTimeline.js';
 
 function SectionForm({ studio }) {
-  const [start, setStart] = useState(String(Number(studio.loopSection.start.toFixed(3))));
-  const [end, setEnd] = useState(String(Number(studio.loopSection.end.toFixed(3))));
+  const [start, setStart] = useState(clockTime(studio.loopSection.start, 3));
+  const [end, setEnd] = useState(clockTime(studio.loopSection.end, 3));
   const [error, setError] = useState('');
   return <form className="section-fields" noValidate onSubmit={async (event) => {
     event.preventDefault();
-    try { await studio.setLoopSection({ start, end });setError(''); } catch (problem) { setError(problem.message); }
+    try { await studio.setLoopSection({ start: parsePlaybackTime(start), end: parsePlaybackTime(end) });setError(''); } catch (problem) { setError(problem.message); }
   }}>
-    <label>Loop start <span>seconds</span><input type="number" min="0" max={studio.arrangement.duration} step="0.01" value={start} disabled={studio.busy} onChange={(event) => setStart(event.target.value)} /></label>
-    <label>Loop end <span>seconds</span><input type="number" min="0.25" max={studio.arrangement.duration} step="0.01" value={end} disabled={studio.busy} onChange={(event) => setEnd(event.target.value)} /></label>
+    <label>Loop start <span>m:ss</span><input className="time-input" type="text" value={start} disabled={studio.busy} onChange={(event) => setStart(event.target.value)} /></label>
+    <label>Loop end <span>m:ss</span><input className="time-input" type="text" value={end} disabled={studio.busy} onChange={(event) => setEnd(event.target.value)} /></label>
     <button type="submit" disabled={studio.busy}>Set section</button>
     {error && <p className="arrangement-error" role="alert">{error}</p>}
   </form>;
@@ -60,13 +62,13 @@ export default function ArrangementSection({ studio, snap }) {
       setDraft(g.draft);
     }} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={() => { gesture.current = null;setDraft(null); }}>
       <div className="section-selected" style={{ left: position(region.start), width: position(region.end - region.start) }} aria-hidden="true" />
-      <div className="section-move" style={{ left: position(region.start), width: position(region.end - region.start) }} data-section-action="move" role="button" tabIndex={disabled ? -1 : 0} aria-label="Move selected arrangement section" onKeyDown={(event) => key(event, 'move')}><span>{region.start.toFixed(2)}–{region.end.toFixed(2)} s</span></div>
+      <div className="section-move" style={{ left: position(region.start), width: position(region.end - region.start) }} data-section-action="move" role="button" tabIndex={disabled ? -1 : 0} aria-label="Move selected arrangement section" onKeyDown={(event) => key(event, 'move')}><span>{clockTime(region.start, 2)}–{clockTime(region.end, 2)}</span></div>
       {['start', 'end'].map((action) => <div key={action} className={'section-handle section-' + action} style={{ left: `clamp(22px, ${position(region[action])}, calc(100% - 22px))` }} data-section-action={action} role="slider" tabIndex={disabled ? -1 : 0}
         aria-disabled={disabled} aria-label={'Arrangement loop ' + action} aria-valuemin={action === 'start' ? 0 : region.start + MIN_LOOP_SECONDS} aria-valuemax={action === 'start' ? region.end - MIN_LOOP_SECONDS : duration} aria-valuenow={region[action]} aria-valuetext={region[action].toFixed(2) + ' seconds'} onKeyDown={(event) => key(event, action)}><span>{action === 'start' ? '↤' : '↦'}</span></div>)}
     </div>
-    <details className="section-exact"><summary>Exact section times and keyboard help</summary>
+    <details className="section-exact"><summary>Type loop times</summary>
     <SectionForm key={studio.loopSection.start + '-' + studio.loopSection.end} studio={studio} />
     <p className="arrangement-help">Arrows adjust the selection; Shift makes fine adjustments. Looping keeps the original timing and fades. Clicking the ruler outside the section turns looping off.</p></details>
-    <p className="section-summary"><output aria-label="Selected arrangement section">{region.start.toFixed(2)}–{region.end.toFixed(2)} s</output> · Selection is only for this session.</p>
+    <p className="section-summary"><output aria-label="Selected arrangement section">{clockTime(region.start, 2)}–{clockTime(region.end, 2)}</output> · listening only</p>
   </section>;
 }

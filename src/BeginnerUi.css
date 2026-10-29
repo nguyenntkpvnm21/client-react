@@ -1,0 +1,41 @@
+/* Keep the working surface visible; details remain available where they belong. */
+.starter-disclosure, .sources-disclosure, .loop-listening { border: 1px solid var(--border); border-radius: 9px; background: #141414; min-width: 0; }
+.starter-disclosure { margin-bottom: 16px; }
+.starter-disclosure > summary, .sources-disclosure > summary, .loop-listening > summary, .workspace-help > summary, .timing-fades > summary { min-height: 44px; padding: 12px 14px; color: #bdbdbd; font-size: 12px; cursor: pointer; }
+.starter-disclosure[open] > summary, .sources-disclosure[open] > summary, .loop-listening[open] > summary { color: var(--accent); border-bottom: 1px solid var(--border); }
+.starter-disclosure .scene-starters { border: 0; margin: 0; }
+.sources-disclosure .source-pool { margin: 0; border: 0; }
+.loop-listening { margin: 14px 0; }
+.loop-listening .arrangement-section { border: 0; margin: 0; padding: 16px; }
+.workspace-help { margin-top: 10px; color: #aaa; font-size: 12px; }
+.workspace-help > summary { padding-inline: 0; }
+.workspace-help p { color: #aaa; font-size: 12px; line-height: 1.8; margin: 8px 0; }
+.timing-fades { margin-top: 10px; }
+.timing-fades > summary { padding-inline: 0; }
+.timing-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.time-input { font-variant-numeric: tabular-nums; }
+.app-shell .track-buttons button { width: auto; min-width: 40px; min-height: 40px; padding: 7px 9px; font-size: 11px; }
+.clip-fields input.time-input { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid #494949; border-radius: 7px; background: #0b0b0b; color: #eee; font: inherit; }
+.arrangement-settings { padding-block: 14px; margin-bottom: 12px; }
+.arrangement-listen-tools:empty { display: none; }
+.arrangement-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-block: 12px; }
+.arrangement-options > details { margin: 0; min-width: 0; }
+.arrangement-options > details[open] { grid-column: 1 / -1; }
+.arrangement-options > .arrangement-source-pool { border: 1px solid var(--border); border-radius: 9px; }
+.arrangement-options > .arrangement-source-pool > summary { padding-inline: 14px; }
+.arrangement-heading h2 { margin: 0; font-size: 1.3rem; }
+.arrangement-row .clip-instance-tools { gap: 8px; }
+.arrangement-row > .clip-instance-tools { grid-column: 2; }
+.arrangement-row > .clip-editor { grid-column: 1 / -1; }
+.clip-instance-tools label { margin-left: auto; }
+.clip-instance-tools input[type=range] { min-height: 4px; height: 4px; padding: 0; border: 0; }
+.clip-more > summary { min-height: 44px; padding: 10px 12px; border: 1px solid #494949; border-radius: 7px; color: #ccc; font-size: 12px; cursor: pointer; }
+.clip-more[open] { flex-basis: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.clip-more[open] > summary { border: 0; padding-inline: 0; }
+.clip-more .clip-instance-source { margin: 0 0 12px; }
+.timeline-instructions { margin-block: 12px; }
+.app-shell .timeline-instructions p { font-size: 12px; }
+.arrangement-export { padding-top: 16px; }
+.section-exact .arrangement-help { max-width: 60ch; }
+.workspace-help :focus-visible, .starter-disclosure > summary:focus-visible, .sources-disclosure > summary:focus-visible, .loop-listening > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media(max-width:760px) { .page-heading { padding-block: 20px; } .arrangement-row-heading { align-items: flex-start; flex-wrap: wrap; } .arrangement-row > .clip-instance-tools { grid-column: 1; } .clip-instance-tools label { margin-left: 0; } .loop-listening .arrangement-section { padding: 12px; } }

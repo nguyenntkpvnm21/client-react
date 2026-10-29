@@ -3,6 +3,7 @@ import ClipEditor from './ClipEditor';
 import { ROLES, SOUNDS } from '../data/sounds.js';
 import { formatTime } from '../lib/studioState.js';
 import Icon from './Icon';
+import { clockTime } from '../lib/timeFormat.js';
 
 export default function TrackControl({ track, index, studio }) {
   const sound = SOUNDS.find((item) => item.id === track.catalogId);
@@ -15,9 +16,9 @@ export default function TrackControl({ track, index, studio }) {
       <span className="track-icon"><Icon name={sound?.icon || (track.role === 'nature' ? 'leaf' : track.role)} size={22} /></span>
       <div className="track-name"><h3 title={track.name}>{track.name}</h3><span>{track.catalogId ? 'Included recording' : 'Your recording'}{info ? ' · ' + formatTime(info.duration) : ''}</span></div>
       <div className="track-buttons">
-        <button type="button" disabled={studio.projectBusy} aria-label={'Mute ' + track.name} title="Mute" aria-pressed={track.muted} onClick={() => studio.updateTrack(track.id, { muted: !track.muted })}>M</button>
-        <button type="button" disabled={studio.projectBusy} aria-label={'Solo ' + track.name} title="Solo" aria-pressed={track.solo} onClick={() => studio.updateTrack(track.id, { solo: !track.solo })}>S</button>
-        <button type="button" disabled={studio.projectBusy || isSequenced(track)} aria-label={'Loop ' + track.name} title={isSequenced(track) ? 'Sequencer plays one-shot samples' : 'Loop'} aria-pressed={track.loop} onClick={() => studio.updateTrack(track.id, { loop: !track.loop })}><Icon name="loop" size={17} /></button>
+        <button type="button" disabled={studio.projectBusy} aria-label={'Mute ' + track.name} title="Silence this clip" aria-pressed={track.muted} onClick={() => studio.updateTrack(track.id, { muted: !track.muted })}>Mute</button>
+        <button type="button" disabled={studio.projectBusy} aria-label={'Solo ' + track.name} title="Hear this clip alone" aria-pressed={track.solo} onClick={() => studio.updateTrack(track.id, { solo: !track.solo })}>Solo</button>
+        <button type="button" disabled={studio.projectBusy || isSequenced(track)} aria-label={'Loop ' + track.name} title={isSequenced(track) ? 'Rhythm repeats its pattern' : 'Repeat selected audio'} aria-pressed={track.loop} onClick={() => studio.updateTrack(track.id, { loop: !track.loop })}>Repeat</button>
         <button className="remove-layer" type="button" aria-label={'Remove ' + track.name} title="Remove layer" disabled={studio.busy} onClick={() => studio.removeTrack(track.id)}><Icon name="trash" size={16} /></button>
       </div>
     </div>
@@ -30,8 +31,8 @@ export default function TrackControl({ track, index, studio }) {
         style={{ '--level': track.volume + '%' }} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
     </div>
     <div className="clip-summary"><button type="button" className="text-button" disabled={studio.busy} aria-label={'Duplicate ' + track.name} onClick={() => studio.duplicateClip(track.id)}>Duplicate clip</button><button type="button" className="text-button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'mixer'}
-      onClick={() => studio.editorId === track.id && studio.editorLocation === 'mixer' ? studio.closeClip() : studio.openClip(track.id)}>Edit normal clip</button>
-      <span>{track.clipEnd != null ? track.clipStart.toFixed(2) + '–' + track.clipEnd.toFixed(2) + ' s · ' + (isSequenced(track) ? 'Sequenced sample' : track.loop ? 'Loop region' : 'Play once') : 'Full recording'}</span></div>
+      onClick={() => studio.editorId === track.id && studio.editorLocation === 'mixer' ? studio.closeClip() : studio.openClip(track.id)}>Edit audio</button>
+      <span>{track.clipEnd != null ? clockTime(track.clipStart, 3) + '–' + clockTime(track.clipEnd, 3) : 'Full recording'}</span></div>
     {isSequenced(track) && <p className="normal-clip-context">Using the rhythm sample. <a href="#/rhythm">Edit in Rhythm</a>; normal clip settings are kept for normal playback.</p>}
     {studio.editorId === track.id && studio.editorLocation === 'mixer' && <ClipEditor key={track.id} track={track} info={info} studio={studio} />}
     {!track.catalogId && <label className="track-role"><span>Use as</span><select aria-label={track.name + ' role'} disabled={studio.projectBusy} value={track.role}
