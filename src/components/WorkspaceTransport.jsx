@@ -35,6 +35,7 @@ export default function WorkspaceTransport({ studio }) {
       <span className="workspace-playback-status" role="status"><span className={'status-dot ' + (studio.status === 'playing' ? 'is-playing' : '')} />{status}</span>
       <PlaybackSeek studio={studio} />
     </div>
+    {studio.scenePreview && <div className="workspace-scene-preview"><span role="status">{studio.scenePreview.status === 'loading' ? 'Loading scene preview' : 'Playing scene preview'} · workspace paused</span><button type="button" onClick={studio.stopScene}>Stop scene preview</button></div>}
     {studio.exportState?.active && <div className="workspace-export-progress"><span role="status">{studio.exportState.stage}</span><progress aria-label="Workspace export progress" max="1" value={studio.exportState.progress} /><button type="button" disabled={studio.exportState.canceling} onClick={studio.cancelExport}>{studio.exportState.canceling ? 'Canceling…' : 'Cancel export'}</button></div>}
     {studio.notice && <p className="workspace-notice" role="status">{studio.notice}</p>}
   </section>;

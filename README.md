@@ -18,16 +18,16 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 148 tests. No additional testing dependency is required.
+The automated suite has 161 tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
 | Page | Purpose |
 | --- | --- |
-| `#/studio` | Import recordings, browse sounds, balance layers and edit normal clips. |
+| `#/studio` | Preview scene starters, import recordings, balance layers and edit normal clips. |
 | `#/rhythm` | Choose rhythm samples, edit steps and audition individual patterns. |
 | `#/arrangement` | Arrange tracks, loop a listening section and export the composition as WAV. |
-| `#/saved-mixes` | Save, open, update, rename and delete named snapshots. |
+| `#/saved-mixes` | Manage saved mixes and transfer editable project backups with audio. |
 
 Only the selected page is rendered; the audio engine, current mix and shared
 transport stay mounted. Navigation preserves mix playback and closes isolated
@@ -385,21 +385,71 @@ eviction that preserves active layers and previews.
 - lib/audioSelection.js: selection geometry, detailed waveform and sound finding.
 - lib/timelineEditing.js and arrangementState.js: validated window editing/fades.
 - lib/studioState.js, savedMixes.js and audioStorage.js: serialization and storage.
+- lib/projectBackup.js and components/ProjectTransfer.jsx: portable project format and transfer UI.
+- lib/scenes.js and components/SceneStarters.jsx: editable starter arrangements and previews.
+
+## Project backups and scene starters
+
+Saved mixes remain local to one browser. In Saved mixes, **Download project**
+creates a `.naturemix` file containing the current workspace (including unsaved
+metadata changes) and the original bytes of every layer. Apply open clip or
+placement drafts first. WAV export remains a finished audio render; project
+backup is the editable form. Playback position, audition loops and editor drafts
+are session state and are not included.
+
+Restore project file checks the container, exact metadata, layer counts, sizes
+and SHA-256 hashes before offering a name. Restore as new mix verifies audio
+by decoding one layer at a time and immediately releasing its PCM, then commits
+the audio and a new saved entry in one IndexedDB transaction. Cancellation is
+available before the final storage commit. Failed writes roll back the whole
+transaction. Existing projects and the current workspace remain open and
+unchanged. Open the restored entry separately when ready.
+
+Included sounds are embedded too. On restore every layer gets a fresh private
+import ID, so a future library URL/content change does not change the restored
+sound. A restored Rain layer is therefore independent of the library Rain
+button and the base-blend shortcuts. No storage schema migration is required.
+
+The version-1 binary format uses an 8-byte `NMIXPK01` signature, a 4-byte
+big-endian JSON length, UTF-8 metadata, then concatenated original audio blobs.
+Metadata is limited to 256 KiB; audio retains the existing 8-layer and 30 MiB
+per-file limits. Hashing and reads are sequential; audio is not converted to
+base64 or PCM when backing up. The file is not a ZIP, is not encrypted, and
+is intended to be opened with NatureMix. Only share a project file with people
+who should receive its included recordings.
+
+Studio offers three editable scene starters: Rainy night (60 s), Morning birds
+(60 s) and Passing shower (75 s). They reuse the included recordings with
+curated levels, staggered entries and fades. Hear scene plays a finite 12-second
+intro preview with an exit fade. Preview pauses the workspace at its existing
+position without changing its mix; Play mix returns to that workspace. The
+shared player identifies scene playback and provides a stop button. Preview
+reuses cached library buffers and checks its additional decoded memory against
+the existing workspace budget. Leaving the
+page, hiding the tab, starting mix playback or closing an editor stops it.
+
+Use scene first asks whether to replace the workspace, with a route to save or
+back it up. The confirmation receives focus and scrolls its actions into view;
+canceling returns focus to the scene button. Start scene then opens its normal
+editable layers and Arrangement;
+no automatic playback or named save is triggered. Existing saved mixes keep
+their audio. Add an imported vocal/instrumental and continue with the existing
+clip, rhythm, timeline and WAV tools.
 
 ## Source handoff
 
-This visual update is based on main `84e42f8`, the merge of shared-seek commit
-`dfb911c`. It preserves the 142 audio/studio tests and the separate eight Focus
-Session tests. The handoff contains only UI source, CSS and documentation.
-Apply on a clean branch, run tests/lint/build, and inspect all four pages before
-committing. No dependencies, audio assets or storage-schema changes are needed.
+This update is based on main `7d415a1`, including audio-memory commit `e408a3e`.
+It preserves the engine's 44.1 kHz decode rate, serialized decoding and 1 GiB
+budget. The package adds project transfer and scene starters without changing
+audio assets, dependencies, the storage schema or existing WAV rendering.
 
-Native Chromium checks cover fixed-player geometry and neutral panel colors on
-all four pages, desktop/rail/mobile navigation, import from the header, sample
-editing, timeline keyboard edits, saving/opening/reloading imported audio, an
-unobscured final form and exact-time popover, plus the existing seek/loop/export
-flow. Responsive checks include breakpoints from 320 to 1920 pixels. Safari,
-Firefox and physical mobile devices are not verified in this environment.
+Project format tests cover metadata/audio round trips, independent rhythm
+regions, cleared patterns, routing, corruption, invalid versions/lengths/IDs,
+missing/duplicate/oversized assets, cancellation and source independence, including a removed/replaced catalog.
+Native Chromium checks cover transfer to a clean browser context without
+catalog access, decode failures, duplicate names, quota rollback, unchanged
+workspace data, scene confirmation/preview/playback and all four pages at
+320–1440 px. Safari, Firefox and physical phones are not verified here.
 
 ## Included audio and deployment
 

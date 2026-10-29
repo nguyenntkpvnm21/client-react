@@ -6,10 +6,12 @@ import { DEFAULT_BPM, sequenceMetadata, validBpm } from '../lib/sequencerState.j
 import { validateRegion } from '../lib/clipRegion.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MAX_TRACKS, SOUNDS, createTrack } from '../data/sounds.js';
-import { AudioEngine } from '../lib/audioEngine.js';
-import { deleteUnusedAudio, readAudio, readSavedMix, readSavedMixes, saveAudio, writeSavedMix } from '../lib/audioStorage.js';
+import { AUDIO_MEMORY_LIMIT, AudioEngine } from '../lib/audioEngine.js';
+import { deleteUnusedAudio, readAudio, readSavedMix, readSavedMixes, restoreSavedMix, saveAudio, writeSavedMix } from '../lib/audioStorage.js';
+import { backupFilename, createProjectBackup, inspectProjectBackup, restoredProject } from '../lib/projectBackup.js';
+import { SCENES, sceneMix, scenePreviewMix } from '../lib/scenes.js';
 import { STUDIO_STORAGE_KEY, defaultMix, loadMix, serializeMix, validateAudioFile, validateMix } from '../lib/studioState.js';
-import { sameMix } from '../lib/savedMixes.js';
+import { MAX_SAVED_MIXES, mixName, sameMix } from '../lib/savedMixes.js';
 
 function initialMix() {
   try { return loadMix(localStorage); } catch { return defaultMix(); }
@@ -57,13 +59,23 @@ export default function useStudio() {
   const projectLock = useRef(false);
   const statusRef = useRef('ready');
   const seekIntent = useRef(null);
+  const [transfer, setTransfer] = useState(null);
+  const [restoreInfo, setRestoreInfo] = useState(null);
+  const pendingBackup = useRef(null);
+  const backupUrl = useRef(null);
+  const transferJob = useRef(null);
+  const [scenePreview, setScenePreview] = useState(null);
+  const scenePlayer = useRef(null);
 
   useEffect(() => {
     alive.current = true;
     let canceled = false;
     const player = new AudioEngine({
       onError: (error) => { if (!canceled) setNotice(error.message); },
-      onState: (state) => { if (!canceled) { statusRef.current = state; setStatus(state); } },
+      onState: (state) => { if (!canceled) {
+        if (state === 'playing' || state === 'loading') stopScene();
+        statusRef.current = state; setStatus(state);
+      } },
       onTrack: (id, metadata) => { if (!canceled) setDetails((previous) => ({ ...previous, [id]: metadata })); },
     });
     engine.current = player;
@@ -102,6 +114,7 @@ export default function useStudio() {
       if (!canceled) { setElapsed(player.position()); setPreview(player.previewPosition()); setCurrentStep(player.currentStep()); setTempo(player.tempoState()); }
     }, 50);
     const visibility = () => {
+      if (document.hidden) stopScene();
       if (document.hidden) player.stopPreview();
       if (document.hidden && player.playing && (player.isSequencing() || player.loopRegion.enabled)) {
         player.pause();
@@ -118,6 +131,11 @@ export default function useStudio() {
       document.removeEventListener('visibilitychange', visibility);
       exportJob.current?.abort();
       if (exportUrl.current) URL.revokeObjectURL(exportUrl.current);
+      if (backupUrl.current) URL.revokeObjectURL(backupUrl.current);
+      pendingBackup.current = null;
+      transferJob.current?.controller.abort();transferJob.current?.validator?.dispose();
+      scenePlayer.current?.dispose();
+      scenePlayer.current = null;
       player.dispose();
     };
   }, []);
@@ -171,6 +189,7 @@ export default function useStudio() {
   }
 
   function setMaster(master) {
+    scenePlayer.current?.setMaster(master);
     if (!projectLock.current) setMix((previous) => ({ ...previous, master }));
   }
 
@@ -212,6 +231,7 @@ export default function useStudio() {
 
   async function importFiles(selected, role) {
     if (importLock.current || projectLock.current || !selected.length) return;
+    stopScene();
     importLock.current = true;
     setImporting(true);
     setNotice('');
@@ -385,6 +405,7 @@ export default function useStudio() {
   }
 
   function stopPreview() {
+    stopScene();
     engine.current?.stopPreview();
     setPreview(null);
   }
@@ -627,10 +648,141 @@ export default function useStudio() {
     setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, rhythm: { ...rhythmMetadata(track), tailMode } } : track) }));
   }
 
+  function stopScene() {
+    scenePlayer.current?.dispose();scenePlayer.current = null;
+    if (alive.current) setScenePreview(null);
+  }
+
+  async function hearScene(id) {
+    if (scenePreview?.id === id) { stopScene(); return; }
+    if (projectLock.current || importLock.current || booting) return;
+    stopScene();seekIntent.current = null;engine.current.pause();setElapsed(engine.current.position());
+    const next = scenePreviewMix(id);
+    let sharedBytes = 0;
+    const player = new AudioEngine({ onTrack: () => {
+      if (engine.current.memory + player.memory - sharedBytes > AUDIO_MEMORY_LIMIT) throw new Error('Scene preview needs more playback memory. Remove a layer before previewing. Your workspace has been kept.');
+    }, onState: (state) => {
+      if (!alive.current || scenePlayer.current !== player) return;
+      if (state === 'finished') stopScene();
+      else setScenePreview({ id, status: state });
+    } });
+    // Reuse already decoded library buffers instead of decoding another copy.
+    for (const track of next.tracks) {
+      const buffer = engine.current.buffers.get(track.id);
+      if (!buffer) continue;
+      const bytes = buffer.length * buffer.numberOfChannels * 4;
+      player.buffers.set(track.id, buffer);player.memory += bytes;sharedBytes += bytes;
+    }
+    scenePlayer.current = player;
+    setNotice('');setScenePreview({ id, status: 'loading' });
+    try { await player.play(withSources(next.tracks), {}, mixRef.current.master, next.bpm, next.arrangement); }
+    catch (error) { if (scenePlayer.current === player) { stopScene();if (alive.current) setNotice(error.message); } }
+  }
+
+  async function useScene(id) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    projectLock.current = true;setProjectBusy(true);
+    try {
+      const next = validateMix(sceneMix(id));
+      const oldIds = mixRef.current.tracks.filter((track) => !track.catalogId).map((track) => track.id);
+      closeClip();engine.current.restart();
+      for (const key of new Set([...engine.current.buffers.keys(), ...engine.current.pending.keys()])) engine.current.forget(key);
+      resetLoop(next.arrangement.duration);setElapsed(0);setDetails({});files.current = {};
+      changeMix(next);setActiveProjectId(null);setStorageBlocked(false);
+      setNotice('Started ' + SCENES.find((scene) => scene.id === id).name + '. Press Play, or open Arrangement to shape its layers.');
+      if (persistWorkspace(next, null)) await reclaim(oldIds, next);
+      return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  async function transferAction(action, input) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    projectLock.current = true;setProjectBusy(true);
+    stopScene();
+    const controller = new AbortController();transferJob.current = { controller, committing: false };
+    const progress = (value) => { if (alive.current) setTransfer({ active: true, ...value }); };
+    progress({ stage: action === 'backup' ? 'Preparing project' : 'Checking project', progress: 0 });
+    let validator;
+    try {
+      if (action === 'backup') {
+        const current = mixRef.current;
+        const name = activeProject?.name || 'Untitled mix';
+        const blob = await createProjectBackup({ mix: current, name, signal: controller.signal, onProgress: progress, resolveAudio: async (track) => {
+          if (!track.catalogId) return files.current[track.id] || await readAudio(track.id);
+          const response = await fetch(SOUNDS.find((sound) => sound.id === track.catalogId).src, { signal: controller.signal });
+          if (!response.ok) throw new Error('Could not back up ' + track.name + '. Check your connection and try again.');
+          return response.blob();
+        } });
+        if (!alive.current) return false;
+        if (backupUrl.current) URL.revokeObjectURL(backupUrl.current);
+        const url = URL.createObjectURL(blob);backupUrl.current = url;
+        const filename = backupFilename(name);
+        setTransfer({ active: false, stage: 'Project ready', url, filename, progress: 1 });
+        const link = document.createElement('a');link.href = url;link.download = filename;document.body.append(link);link.click();link.remove();
+      } else if (action === 'inspect') {
+        pendingBackup.current = null;setRestoreInfo(null);
+        const backup = await inspectProjectBackup(input, progress, controller.signal);
+        if (!alive.current) return false;
+        pendingBackup.current = backup;
+        setRestoreInfo({ name: backup.name, tracks: backup.mix.tracks.length, bytes: backup.bytes });
+        setTransfer({ active: false, stage: 'Ready to restore', progress: 1 });
+      } else if (action === 'restore') {
+        if (!pendingBackup.current || projectsBlocked) throw new Error('Choose a project file with browser storage enabled first.');
+        const name = mixName(input);
+        if (savedMixes.length >= MAX_SAVED_MIXES) throw new Error('Your saved collection is full. Delete a saved entry before restoring.');
+        if (savedMixes.some((project) => project.name.toLowerCase() === name.toLowerCase())) throw new Error('A mix with this name already exists. Choose another name.');
+        const restored = restoredProject(pendingBackup.current, input);
+        // Decode one layer at a time, then discard its PCM. Bad audio never reaches storage.
+        validator = new AudioEngine();
+        transferJob.current.validator = validator;
+        let index = 0, decodedBytes = 0;
+        for (const track of restored.mix.tracks) {
+          progress({ stage: 'Verifying ' + track.name, progress: index++ / Math.max(1, restored.mix.tracks.length) });
+          const buffer = await validator.load(track, restored.files.get(track.id));
+          decodedBytes += buffer.length * buffer.numberOfChannels * 4;validator.forget(track.id);
+          if (decodedBytes > AUDIO_MEMORY_LIMIT) throw new Error('This project would exceed 1 GiB of decoded audio. Your saved mixes have been kept.');
+          if (!alive.current) return false;
+          if (controller.signal.aborted) throw new DOMException('Project transfer canceled.', 'AbortError');
+        }
+        if (controller.signal.aborted) throw new DOMException('Project transfer canceled.', 'AbortError');
+        transferJob.current.committing = true;
+        if (alive.current) setTransfer({ active: true, stage: 'Saving restored project', progress: 1, committing: true });
+        const projects = await restoreSavedMix(restored);
+        if (!alive.current) return false;
+        setSavedMixes(projects);pendingBackup.current = null;setRestoreInfo(null);
+        setTransfer({ active: false, stage: 'Restored “' + restored.name + '”. Open it from Saved mixes when you are ready.', progress: 1 });
+      }
+      return true;
+    } catch (error) {
+      if (alive.current) setTransfer(controller.signal.aborted ? { active: false, stage: 'Transfer canceled. Your current workspace and saved mixes have been kept.' }
+        : { active: false, error: error.message || 'This project could not be transferred. Try again.' });
+      return false;
+    } finally {
+      validator?.dispose();transferJob.current = null;projectLock.current = false;
+      if (alive.current) setProjectBusy(false);
+    }
+  }
+
+  function discardProjectFile() {
+    if (projectLock.current) return;
+    pendingBackup.current = null;setRestoreInfo(null);setTransfer(null);
+  }
+
+  function cancelTransfer() {
+    const job = transferJob.current;
+    if (!job || job.committing) return;
+    job.controller.abort();job.validator?.dispose();
+    setTransfer((previous) => ({ ...previous, canceling: true, stage: 'Canceling project transfer' }));
+  }
+
   const activeProject = savedMixes.find((project) => project.id === activeProjectId);
   const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
   return { ...mix, seekPlayback, loopSection, setLoopSection, playLoop, disableLoop, exportState, exportArrangement, cancelExport, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
     savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
+    transfer, restoreInfo, discardProjectFile, cancelTransfer, downloadProject: () => transferAction('backup'),
+    inspectProjectFile: (file) => transferAction('inspect', file), restoreProject: (name) => transferAction('restore', name),
+    scenePreview, hearScene, stopScene, useScene,
     editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm,
     busy: booting || importing || rhythmBusy || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
     setBpm,
