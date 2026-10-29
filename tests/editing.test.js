@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { enableRhythmTrack, rhythmMetadata, rhythmRegion, patternSummary, MAX_RING_VOICES } from '../src/lib/rhythmState.js';
-import { boundSelection, moveSelection, sizedSelection, waveformPeaks, findSoundRegion } from '../src/lib/audioSelection.js';
+import { boundSelection, listeningView, markSelection, moveSelection, sizedSelection, waveformPeaks, findSoundRegion } from '../src/lib/audioSelection.js';
+import { DRUMS, drumBuffer, drumKit, drumTrack } from '../src/lib/drumStarter.js';
 import { editTimelineWindow } from '../src/lib/timelineEditing.js';
 import { serializeMix, validateMix } from '../src/lib/studioState.js';
 import { sameMix, changeProject } from '../src/lib/savedMixes.js';
@@ -23,6 +24,58 @@ function setup() {
  return { context, sources, gains, timers, scheduler, engine: new AudioEngine({ createContext: () => context }) };
 }
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, `${a} != ${b}`);
+
+test('long recordings open a detailed listening window around the working point', () => {
+ assert.deepEqual(listeningView(0, 200), { start: 0, end: 8 });
+ const middle = listeningView(100, 200);assert.ok(middle.start < 100 && middle.end > 100);close(middle.end - middle.start, 8);
+ assert.deepEqual(listeningView(200, 200), { start: 192, end: 200 });
+ assert.deepEqual(listeningView(.02, .05), { start: 0, end: .05 });
+});
+
+test('marking start or end while listening stays valid across the previous selection', () => {
+ assert.deepEqual(markSelection('start', 40, 2, 3, 200), { start: 40, end: 40.05 });
+ assert.deepEqual(markSelection('end', 41.2, 40, 40.05, 200), { start: 40, end: 41.2 });
+ assert.deepEqual(markSelection('end', 0, 40, 41, 200), { start: 0, end: .05 });
+ const last = markSelection('start', 200, 40, 41, 200);close(last.start, 199.95);close(last.end, 200);
+});
+
+test('synthesized drums are distinct audible 44.1 kHz one-shots with quiet boundaries', async () => {
+ const { file, drums } = await drumKit(DRUMS.map((drum) => drum.id));
+ const bytes = new DataView(await file.arrayBuffer());assert.equal(bytes.getUint32(24, true), 44100);assert.equal(bytes.getUint16(22, true), 1);assert.equal(bytes.getUint16(34, true), 16);
+ for (let i = 0; i < DRUMS.length; i += 1) {
+  const buffer = drumBuffer(DRUMS[i].id), samples = buffer.getChannelData(0);
+  assert.equal(buffer.sampleRate, 44100);assert.equal(samples[0], 0);assert.equal(Math.abs(samples.at(-1)), 0);
+  assert.ok(samples.some((value) => Math.abs(value) > .2));assert.ok(samples.every((value) => Number.isFinite(value) && Math.abs(value) <= 1));
+  close(drums[i].end - drums[i].start, buffer.duration);
+  if (i) assert.ok(drums[i].start >= drums[i-1].end + .049);
+  const offset = Math.round(drums[i].start * 44100);assert.equal(bytes.getInt16(44 + offset * 2, true), 0);
+ }
+ assert.throws(() => drumBuffer('unknown'));
+});
+
+test('drum rows share one recording and keep complementary patterns and independent samples through workspace serialization', async () => {
+ const { drums } = await drumKit(DRUMS.map((drum) => drum.id));
+ const rows = drums.map((drum) => drumTrack(drum, 'custom-' + drum.id, 'custom-kit'));
+ const restored = validateMix(serializeMix({ tracks: rows, master: 75, bpm: 110 }));
+ for (const [i, row] of restored.tracks.entries()) {
+  assert.equal(row.sequence.enabled, true);assert.equal(row.loop, false);
+  assert.deepEqual(row.sequence.steps.flatMap((on, step) => on ? [step] : []), DRUMS[i].hits);
+  close(row.rhythm.sampleEnd - row.rhythm.sampleStart, DRUMS[i].duration);assert.equal(row.volume, DRUMS[i].volume);
+  assert.equal(row.clipStart, drums[i].start);assert.equal(row.clipEnd, drums[i].end);
+ }
+ assert.equal(restored.sources.length, 1);
+});
+
+test('recording audition seeks cancel the previous source and leave the mix cursor intact', async () => {
+ const { engine, sources, context } = setup();
+ const row = track({ sequence: { enabled: false, steps: steps() } });
+ await engine.play([row], { rain: file }, 75);context.currentTime = 2.06;engine.pause();
+ await engine.preview(row, file, 5, 10, false);const previous = sources.at(-1);
+ await engine.preview(row, file, 7, 10, false);
+ assert.equal(previous.stops.length, 1);assert.equal(previous.disconnected, true);
+ close(sources.at(-1).starts[0][1], 7);close(engine.position(), 2);assert.equal(engine.playing, false);
+ engine.stopPreview();assert.equal(engine.previewPosition(), null);engine.dispose();
+});
 
 test('first rhythm creation keeps the normal clip and preserves a sample selected before creation', () => {
  const normal = track({ rhythm: undefined, sequence: { enabled: false, steps: steps() } });
