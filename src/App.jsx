@@ -6,6 +6,7 @@ import Icon from './components/Icon';
 import MixWorkspace from './components/MixWorkspace';
 import SoundLibrary from './components/SoundLibrary';
 import SavedMixes from './components/SavedMixes';
+import SceneStarters from './components/SceneStarters';
 import StepSequencer from './components/StepSequencer';
 import WorkspaceTransport from './components/WorkspaceTransport';
 import useStudio from './hooks/useStudio';
@@ -62,9 +63,9 @@ export default function App() {
     <main className={'app-main page-' + page.id} id="main-content" ref={mainRef} tabIndex={-1} aria-labelledby="page-title">
       <section className="page-heading"><div><p className="eyebrow">NATUREMIX / {page.label.toUpperCase()}</p><h1 id="page-title">{page.title}</h1><p>{page.description}</p></div><span className="page-mode"><span className="small-dot" />{studio.arrangement.enabled ? 'Arrangement' : 'Free mix'}</span></section>
       <div className="page-content">
-        {page.id === 'studio' && <div className="studio-page-grid"><MixWorkspace studio={studio} />
+        {page.id === 'studio' && <><SceneStarters studio={studio} /><div className="studio-page-grid"><MixWorkspace studio={studio} />
           <aside className="studio-sidebar" aria-label="Add sounds"><SoundLibrary studio={studio} /><AudioImport studio={studio} role={role} setRole={setRole} inputRef={inputRef} chooseFiles={chooseFiles} /></aside>
-        </div>}
+        </div></>}
         {page.id === 'rhythm' && <StepSequencer studio={studio} />}
         {page.id === 'arrangement' && <Arrangement studio={studio} />}
         {page.id === 'saved-mixes' && <SavedMixes studio={studio} />}

@@ -12,7 +12,7 @@ import { audibleGain } from './studioState.js';
 
 // Eight four-minute stereo layers at 44.1 kHz use about 646 MiB of PCM.
 // The old 512 MiB ceiling rejected ordinary mixes even when decoding succeeded.
-const MEMORY_LIMIT = 1024 * 1024 * 1024;
+export const AUDIO_MEMORY_LIMIT = 1024 * 1024 * 1024;
 const SAMPLE_RATE = 44100;
 
 function auditionTrack(track) { return { ...track, volume: 100, muted: false, solo: false, sequence: { ...track.sequence, enabled: true } }; }
@@ -225,7 +225,7 @@ export class AudioEngine {
         throw new Error(track.name + ' must be between 0 and 15 minutes long.');
       }
       const size = buffer.length * buffer.numberOfChannels * 4;
-      if (this.memory + size > MEMORY_LIMIT) {
+      if (this.memory + size > AUDIO_MEMORY_LIMIT) {
         // Waveform/sample inspection can leave decoded recordings outside the mix.
         // Never evict a layer in the mix or an isolated preview to make room.
         const retained = new Set(this.tracks.map((item) => item.id));
@@ -235,7 +235,7 @@ export class AudioEngine {
           this.memory -= cached.length * cached.numberOfChannels * 4;
         }
       }
-      if (this.memory + size > MEMORY_LIMIT) throw new Error('Not enough playback memory for ' + track.name + '. This mix would exceed 1 GiB of decoded audio. Your saved mixes and original files are unchanged.');
+      if (this.memory + size > AUDIO_MEMORY_LIMIT) throw new Error('Not enough playback memory for ' + track.name + '. This mix would exceed 1 GiB of decoded audio. Your saved mixes and original files are unchanged.');
       this.memory += size;
       this.buffers.set(track.id, buffer);
       this.onTrack(track.id, { duration: buffer.duration, peaks: waveform(buffer) });

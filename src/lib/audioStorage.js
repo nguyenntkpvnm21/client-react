@@ -119,6 +119,41 @@ export async function readSavedMix(id) {
   });
 }
 
+// Restores are additive. Audio and the new saved entry either all commit or all roll back.
+export async function restoreSavedMix({ id, name, mix, files }) {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['files', 'mixes'], 'readwrite');
+    const audio = transaction.objectStore('files'), projects = transaction.objectStore('mixes');
+    let result, failure;
+    const abort = (error) => { failure = error; transaction.abort(); };
+    transaction.oncomplete = () => resolve(result);
+    transaction.onabort = transaction.onerror = () => reject(failure || transaction.error || new Error('Unable to restore this project. Check available browser storage.'));
+    const request = projects.getAll();
+    request.onsuccess = () => {
+      try {
+        result = changeProject(request.result, 'save', { id, name, mix });
+        const project = result.find((item) => item.id === id);
+        if (project.mix.tracks.some((track) => track.catalogId || !(files.get(track.id) instanceof Blob))
+          || files.size !== project.mix.tracks.length) throw new Error('The project audio is incomplete.');
+        let remaining = files.size;
+        if (!remaining) { projects.put(project); return; }
+        for (const [fileId, file] of files) {
+          const check = audio.get(fileId);
+          check.onsuccess = () => {
+            try {
+              if (check.result) throw new Error('A restored audio identifier is already in use. Try restoring again.');
+              audio.put({ id: fileId, file });
+              remaining -= 1;
+              if (!remaining) projects.put(project);
+            } catch (error) { abort(error); }
+          };
+        }
+      } catch (error) { abort(error); }
+    };
+  });
+}
+
 // A stored recording is reclaimed only after its final project/workspace reference is gone.
 export async function deleteUnusedAudio(ids, workspaceTracks) {
   if (!ids.length) return;

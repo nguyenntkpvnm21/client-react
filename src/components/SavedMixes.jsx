@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MAX_MIX_NAME, MAX_SAVED_MIXES } from '../lib/savedMixes.js';
 import Icon from './Icon';
+import ProjectTransfer from './ProjectTransfer';
 import './SavedMixes.css';
 
 export default function SavedMixes({ studio }) {
@@ -62,5 +63,6 @@ export default function SavedMixes({ studio }) {
     })}</ul>
     {studio.savedNotice && <p className="saved-notice" role="status">{studio.savedNotice}</p>}
     <p className="saved-footnote">Saved in this browser. Mixes share imported audio; no extra copy is made.</p>
+    <ProjectTransfer studio={studio} />
   </section>;
 }
