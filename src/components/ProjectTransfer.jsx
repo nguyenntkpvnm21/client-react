@@ -28,7 +28,7 @@ export default function ProjectTransfer({ studio }) {
     {state?.url && !state.active && <a href={state.url} download={state.filename}>Download {state.filename} again</a>}
     {studio.restoreInfo && <form className="project-restore-review" onSubmit={(event) => { event.preventDefault();void studio.restoreProject(name ?? studio.restoreInfo.name); }}>
       <h4>Restore as a new saved mix</h4>
-      <p>{studio.restoreInfo.tracks} audio layers · {(studio.restoreInfo.bytes / 1024 / 1024).toFixed(1)} MiB. Your current workspace stays open. Existing saved mixes are kept.</p>
+      <p>{studio.restoreInfo.tracks} clips from {studio.restoreInfo.sources} recordings · {(studio.restoreInfo.bytes / 1024 / 1024).toFixed(1)} MiB. Your current workspace stays open. Existing saved mixes are kept.</p>
       <label htmlFor="restored-mix-name">Restored mix name</label>
       <input id="restored-mix-name" value={name ?? studio.restoreInfo.name} onChange={(event) => setName(event.target.value)} maxLength={MAX_MIX_NAME} disabled={disabled} required />
       {studio.savedMixes.length >= MAX_SAVED_MIXES && <p role="alert">Your saved collection is full. Delete a saved entry before restoring.</p>}

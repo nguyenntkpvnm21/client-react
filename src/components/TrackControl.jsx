@@ -9,7 +9,7 @@ export default function TrackControl({ track, index, studio }) {
   const info = studio.details[track.id];
   const soloActive = studio.tracks.some((item) => item.solo);
   const quiet = track.muted || (soloActive && !track.solo);
-  return <article className={'track-card ' + track.role + (quiet ? ' is-quiet' : '')} aria-label={track.name + ' layer'}>
+  return <article data-clip-id={track.id} className={'track-card ' + track.role + (quiet ? ' is-quiet' : '')} aria-label={track.name + ' layer'}>
     <div className="track-heading">
       <span className="track-index">{String(index + 1).padStart(2, '0')}</span>
       <span className="track-icon"><Icon name={sound?.icon || (track.role === 'nature' ? 'leaf' : track.role)} size={22} /></span>
@@ -29,7 +29,7 @@ export default function TrackControl({ track, index, studio }) {
       <label className="track-level"><span className="sr-only">{track.name + ' volume'}</span><input type="range" min="0" max="100" value={track.volume}
         style={{ '--level': track.volume + '%' }} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
     </div>
-    <div className="clip-summary"><button type="button" className="text-button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'mixer'}
+    <div className="clip-summary"><button type="button" className="text-button" disabled={studio.busy} aria-label={'Duplicate ' + track.name} onClick={() => studio.duplicateClip(track.id)}>Duplicate clip</button><button type="button" className="text-button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'mixer'}
       onClick={() => studio.editorId === track.id && studio.editorLocation === 'mixer' ? studio.closeClip() : studio.openClip(track.id)}>Edit normal clip</button>
       <span>{track.clipEnd != null ? track.clipStart.toFixed(2) + '–' + track.clipEnd.toFixed(2) + ' s · ' + (isSequenced(track) ? 'Sequenced sample' : track.loop ? 'Loop region' : 'Play once') : 'Full recording'}</span></div>
     {isSequenced(track) && <p className="normal-clip-context">Using the rhythm sample. <a href="#/rhythm">Edit in Rhythm</a>; normal clip settings are kept for normal playback.</p>}

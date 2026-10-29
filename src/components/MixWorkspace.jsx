@@ -1,4 +1,4 @@
-import { MAX_TRACKS } from '../data/sounds.js';
+import { MAX_CLIPS } from '../data/sounds.js';
 import Icon from './Icon';
 import TrackControl from './TrackControl';
 
@@ -10,7 +10,7 @@ const BLENDS = [
 
 export default function MixWorkspace({ studio }) {
   return <section className="workspace-panel panel" id="studio" aria-labelledby="mixer-title">
-    <div className="mixer-heading"><div><p className="eyebrow">YOUR OWN LITTLE ECOSYSTEM</p><h2 id="mixer-title">Your mix<span className="count-pill">{studio.tracks.length}/{MAX_TRACKS}</span></h2></div>
+    <div className="mixer-heading"><div><p className="eyebrow">YOUR OWN LITTLE ECOSYSTEM</p><h2 id="mixer-title">Your mix<span className="count-pill">{studio.tracks.length}/{MAX_CLIPS} clips</span></h2></div>
       <button type="button" className="text-button" disabled={studio.busy} onClick={studio.resetLevels}><Icon name="reset" size={15} />Reset levels</button></div>
     <p className="workspace-project"><span>{studio.activeProject?.name || 'Current workspace'}</span><span>{studio.activeProject ? (studio.dirty ? 'Unsaved changes' : 'Saved mix') : 'Not saved as a named mix'}</span></p>
     <div className="blend-row"><span>Base blends</span><div role="group" aria-label="Included sound blends">{BLENDS.map((blend) => <button key={blend.id} type="button" disabled={studio.busy}

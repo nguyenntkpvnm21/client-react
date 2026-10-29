@@ -63,9 +63,13 @@ export function windowGain(window, position) {
 export function scheduleWindowEnvelope(param, when, position, window) {
   param.setValueAtTime(windowGain(window, position), when);
   const at = (point) => when + point - position;
+  const fadeInEnd = window.start + window.fadeIn;
+  const fadeOutStart = window.end - window.fadeOut;
   if (window.start > position) param.setValueAtTime(window.fadeIn ? 0 : 1, at(window.start));
-  if (window.fadeIn && window.start + window.fadeIn > position) param.linearRampToValueAtTime(1, at(window.start + window.fadeIn));
-  if (window.fadeOut && window.end - window.fadeOut > position) param.setValueAtTime(1, at(window.end - window.fadeOut));
+  if (window.fadeIn && fadeInEnd > position) param.linearRampToValueAtTime(1, at(fadeInEnd));
+  // Touching fades already meet at the ramp's peak. A nearly coincident Set
+  // event can sort before that ramp and turn the entire fade-in into a jump.
+  if (window.fadeOut && fadeOutStart > position && (!window.fadeIn || fadeOutStart > fadeInEnd + 1e-8)) param.setValueAtTime(1, at(fadeOutStart));
   if (window.end > position) {
     if (window.fadeOut) param.linearRampToValueAtTime(0, at(window.end));
     else param.setValueAtTime(0, at(window.end));

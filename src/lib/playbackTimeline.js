@@ -9,7 +9,7 @@ export function playbackTimeline(tracks, details, arrangement, bpm, elapsed = 0)
   const ready = tracks.length > 0 && tracks.every((track) => Number.isFinite(details[track.id]?.duration));
   const repeating = tracks.some((track) => isSequenced(track) || track.loop);
   const lengths = tracks.map((track) => isSequenced(track) ? 16 * stepSeconds(bpm)
-    : details[track.id]?.duration ? clipRegion(track, details[track.id].duration).length : 0);
+    : details[track.id]?.duration ? Math.max(0, clipRegion(track, details[track.id].duration).length - (track.sourceOffset || 0)) : 0);
   const span = Math.max(0, ...lengths);
   const duration = ready && !repeating ? span : null;
   return { duration, max: duration ?? Math.max(60, span, Math.ceil(Math.max(0, elapsed) / 60) * 60), repeating, ready };

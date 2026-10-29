@@ -17,7 +17,7 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
   const peaks = useMemo(() => region ? waveformFor(track.id, region.start, region.end, 240) : [], [waveformFor, track.id, region]);
   const position = (time) => time / duration * 100;
   const length = current.end - current.start;
-  const audible = region && !sequenced && !track.loop ? Math.min(length, region.length) : length;
+  const audible = region && !sequenced && !track.loop ? Math.min(length, Math.max(0, region.length - (track.sourceOffset || 0))) : length;
   const steps = sequenceMetadata(track).steps;
   let path = '';
   if (sequenced) {
@@ -28,12 +28,12 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
   } else if (region && peaks.length) {
     for (let i = 0; i < 320; i += 1) {
       const time = i / 320 * length;
-      const peak = time >= audible ? 0 : peaks[Math.min(peaks.length - 1, Math.floor((time % region.length) / region.length * peaks.length))];
+      const peak = time >= audible ? 0 : peaks[Math.min(peaks.length - 1, Math.floor(((time + (track.sourceOffset || 0)) % region.length) / region.length * peaks.length))];
       const x = (i + .5) / 320 * 1000; path += `M${x} ${60 - peak * 30}V${60 + peak * 30}`;
     }
   }
-  function commit(value) {
-    try { studio.setPlacement(track.id, value); setError(''); }
+  function commit(value, action) {
+    try { studio.setPlacement(track.id, value, false, action); setError(''); }
     catch (problem) { setError(problem.message); }
     setDraft(null);
   }
@@ -58,7 +58,7 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
     if (!g || g.id !== event.pointerId) return;
     gesture.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (!cancel && JSON.stringify(g.draft) !== JSON.stringify(g.original)) commit(g.draft);
+    if (!cancel && JSON.stringify(g.draft) !== JSON.stringify(g.original)) commit(g.draft, g.action);
     else setDraft(null);
   }
   function key(event, action) {
@@ -66,7 +66,7 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp'].includes(event.key)) return;
     event.preventDefault();
     const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1;
-    commit(editTimelineWindow(window, action, direction * (event.shiftKey ? .01 : snap ? 60 / studio.bpm : .1), duration, event.shiftKey ? 0 : snap ? 60 / studio.bpm : 0));
+    commit(editTimelineWindow(window, action, direction * (event.shiftKey ? .01 : snap ? 60 / studio.bpm : .1), duration, event.shiftKey ? 0 : snap ? 60 / studio.bpm : 0), action);
   }
   const handles = [['start', 'entry', current.start, current.start, 0, current.end - .05], ['end', 'exit', current.end, current.end, current.start + .05, duration],
     ['fadeIn', 'fade in', current.start + current.fadeIn, current.fadeIn, 0, length - current.fadeOut], ['fadeOut', 'fade out', current.end - current.fadeOut, current.fadeOut, 0, length - current.fadeIn]];

@@ -1,3 +1,4 @@
+import { sourceId } from './audioSources.js';
 import { ArrangementLooper } from './arrangementLooper.js';
 import { playbackTimeline } from './playbackTimeline.js';
 import { validateLoopRegion } from './loopRegion.js';
@@ -59,6 +60,7 @@ export class AudioEngine {
     this.context = null;
     this.buffers = new Map();
     this.pending = new Map();
+    this.sourceKeys = new Map();
     this.loadQueue = null;
     this.nodes = new Map();
     this.tracks = [];
@@ -161,6 +163,12 @@ export class AudioEngine {
   }
 
   setTracks(tracks) {
+    for (const track of tracks) {
+      this.sourceKeys.set(track.id, sourceId(track));
+      if (this.buffers.has(track.id)) continue;
+      const buffer = [...this.buffers].find(([id]) => (this.sourceKeys.get(id) || id) === sourceId(track))?.[1];
+      if (buffer) { this.buffers.set(track.id, buffer);this.onTrack(track.id, { duration: buffer.duration, peaks: waveform(buffer) }); }
+    }
     if (this.playing && this.looper) { this.tracks = tracks;this.looper.setTracks(tracks);return; }
     const moved = this.arrangement.enabled ? tracks.filter((track) => {
       const previous = this.tracks.find((item) => item.id === track.id);
@@ -194,11 +202,24 @@ export class AudioEngine {
   }
 
   async load(track, file) {
+    const key = sourceId(track);
+    this.sourceKeys.set(track.id, key);
     if (this.buffers.has(track.id)) return this.buffers.get(track.id);
-    if (this.pending.has(track.id)) return this.pending.get(track.id).promise;
+    const cached = [...this.buffers].find(([id]) => (this.sourceKeys.get(id) || id) === key)?.[1];
+    if (cached) {
+      this.buffers.set(track.id, cached);
+      this.onTrack(track.id, { duration: cached.duration, peaks: waveform(cached) });
+      return cached;
+    }
+    if (this.pending.has(key) && !this.pending.get(key).controller.signal.aborted) {
+      const operation = this.pending.get(key);operation.ids.add(track.id);
+      const buffer = await operation.promise;
+      if (!operation.ids.has(track.id)) throw new Error('Audio loading was canceled.');
+      return buffer;
+    }
     const context = this.ensureContext();
     const controller = new AbortController();
-    const operation = {};
+    const operation = { ids: new Set([track.id]) };
     operation.controller = controller;
     const previous = this.loadQueue;
     let release;
@@ -230,23 +251,24 @@ export class AudioEngine {
         // Never evict a layer in the mix or an isolated preview to make room.
         const retained = new Set(this.tracks.map((item) => item.id));
         retained.add(this.previewId);
-        for (const [id, cached] of this.buffers) if (!retained.has(id) && !this.nodes.has(id)) {
-          this.buffers.delete(id);
-          this.memory -= cached.length * cached.numberOfChannels * 4;
+        for (const id of this.buffers.keys()) if (!retained.has(id) && !this.nodes.has(id)) {
+          this.forget(id);
         }
       }
       if (this.memory + size > AUDIO_MEMORY_LIMIT) throw new Error('Not enough playback memory for ' + track.name + '. This mix would exceed 1 GiB of decoded audio. Your saved mixes and original files are unchanged.');
       this.memory += size;
-      this.buffers.set(track.id, buffer);
-      this.onTrack(track.id, { duration: buffer.duration, peaks: waveform(buffer) });
+      const metadata = { duration: buffer.duration, peaks: waveform(buffer) };
+      for (const id of operation.ids) { this.buffers.set(id, buffer);this.onTrack(id, metadata); }
       return buffer;
     })().finally(() => {
       release();
       if (this.loadQueue === turn) this.loadQueue = null;
-      if (this.pending.get(track.id) === operation) this.pending.delete(track.id);
+      if (this.pending.get(key) === operation) this.pending.delete(key);
     });
-    this.pending.set(track.id, operation);
-    return operation.promise;
+    this.pending.set(key, operation);
+    const buffer = await operation.promise;
+    if (!operation.ids.has(track.id)) throw new Error('Audio loading was canceled.');
+    return buffer;
   }
 
   async play(tracks, files, master, bpm = DEFAULT_BPM, arrangement) {
@@ -260,13 +282,13 @@ export class AudioEngine {
     this.onState('loading');
     try {
       await context.resume();
-      await Promise.all(tracks.map((track) => this.load(track, files[track.id])));
+      await Promise.all(tracks.map((track) => this.load(track, files[sourceId(track)] || files[track.id])));
       if (this.disposed || request !== this.request) return;
       if (context.state !== 'running') throw new Error('Playback is paused by your browser. Press Play again.');
       if (this.arrangement.enabled && this.offset >= this.arrangement.duration) {
         this.offset = 0; this.sequencePhase = 0; this.sequenceTails = null;
       }
-      if (!this.arrangement.enabled && !this.isSequencing() && !this.tracks.some((track) => track.loop) && this.tracks.every((track) => this.offset >= clipRegion(track, this.buffers.get(track.id).duration).length)) this.offset = 0;
+      if (!this.arrangement.enabled && !this.isSequencing() && !this.tracks.some((track) => track.loop) && this.tracks.every((track) => this.offset >= Math.max(0, clipRegion(track, this.buffers.get(track.id).duration).length - (track.sourceOffset || 0)))) this.offset = 0;
       const when = context.currentTime + 0.06;
       if (this.arrangement.enabled && this.loopRegion.enabled) {
         const region = validateLoopRegion(this.loopRegion, this.arrangement.duration);
@@ -343,7 +365,7 @@ export class AudioEngine {
     this.seek(value);
     const request = ++this.request;
     this.onState('loading');
-    try { await Promise.all([resume ? this.ensureContext().resume() : Promise.resolve(), ...tracks.map((track) => this.load(track, files[track.id]))]); }
+    try { await Promise.all([resume ? this.ensureContext().resume() : Promise.resolve(), ...tracks.map((track) => this.load(track, files[sourceId(track)] || files[track.id]))]); }
     catch (error) {
       if (this.disposed || request !== this.request) return false;
       this.pause();throw error;
@@ -361,10 +383,16 @@ export class AudioEngine {
     this.stopNode(id);
     this.scheduler?.remove(id);
     this.looper?.remove(id);
-    this.pending.get(id)?.controller.abort();
-    const buffer = this.buffers.get(id);
-    if (buffer) this.memory -= buffer.length * buffer.numberOfChannels * 4;
-    this.buffers.delete(id);
+    const key = this.sourceKeys.get(id) || id;
+    const pending = this.pending.get(key);
+    if (pending) { pending.ids.delete(id);if (!pending.ids.size) pending.controller.abort(); }
+    this.buffers.delete(id);this.sourceKeys.delete(id);
+    this.memory = [...new Set(this.buffers.values())].reduce((sum, buffer) => sum + buffer.length * buffer.numberOfChannels * 4, 0);
+  }
+
+  clearAudio() {
+    for (const operation of this.pending.values()) operation.controller.abort();
+    this.buffers.clear();this.sourceKeys.clear();this.memory = 0;
   }
 
   waveformFor(id, start, end, bins) {
@@ -475,9 +503,7 @@ export class AudioEngine {
   dispose() {
     this.disposed = true;
     this.pause();
-    for (const operation of this.pending.values()) operation.controller.abort();
-    this.buffers.clear();
-    this.memory = 0;
+    this.clearAudio();
     if (this.context) {
       this.context.onstatechange = null;
       void this.context.close().catch(() => {});

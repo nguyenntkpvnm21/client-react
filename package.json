@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test tests/studio.test.js tests/audioEngine.test.js tests/savedMixes.test.js tests/clips.test.js tests/sequencer.test.js tests/arrangement.test.js tests/editing.test.js tests/export.test.js tests/playbackSeek.test.js tests/projectBackup.test.js"
+    "test": "node --test tests/studio.test.js tests/audioEngine.test.js tests/savedMixes.test.js tests/clips.test.js tests/sequencer.test.js tests/arrangement.test.js tests/editing.test.js tests/export.test.js tests/playbackSeek.test.js tests/projectBackup.test.js tests/clipInstances.test.js"
   },
   "dependencies": {
     "react": "^19.2.8",

@@ -15,10 +15,11 @@ export function createMasterGraph(context, level) {
 // Shared by normal playback, section auditions and offline rendering.
 export function scheduleNormalTrack({ context, output, track, tracks, buffer, when, offset, arrangement, stopAt = Infinity }) {
   const region = clipRegion(track, buffer.duration);
+  const sourceOffset = track.sourceOffset || 0;
   let localOffset = offset, duration = Infinity, window;
   if (arrangement.enabled) {
     window = arrangementWindow(track, arrangement);
-    if (!track.loop) window = fitFades(window, Math.min(window.end, window.start + region.length));
+    if (!track.loop) window = fitFades(window, Math.min(window.end, window.start + Math.max(0, region.length - sourceOffset)));
     const end = Math.min(window.end, stopAt);
     if (offset >= end || end <= window.start) return null;
     const entry = Math.max(offset, window.start);
@@ -26,7 +27,7 @@ export function scheduleNormalTrack({ context, output, track, tracks, buffer, wh
     localOffset = entry - window.start;
     duration = end - entry;
   }
-  if (!track.loop && localOffset >= region.length) return null;
+  if (!track.loop && localOffset + sourceOffset >= region.length) return null;
   const source = context.createBufferSource(), gain = context.createGain();
   source.buffer = buffer;source.loop = track.loop;source.loopStart = region.start;source.loopEnd = region.end;
   gain.gain.value = audibleGain(track, tracks);
@@ -35,7 +36,7 @@ export function scheduleNormalTrack({ context, output, track, tracks, buffer, wh
   let last = gain;
   if (window) {
     envelope = context.createGain();
-    scheduleWindowEnvelope(envelope.gain, when, Math.max(offset, window.start), window);
+    scheduleWindowEnvelope(envelope.gain, when, Math.max(offset, window.start), track.gainEnvelope || window);
     last.connect(envelope);last = envelope;
   }
   if (Number.isFinite(stopAt)) {
@@ -46,12 +47,12 @@ export function scheduleNormalTrack({ context, output, track, tracks, buffer, wh
     last.connect(edge);last = edge;
   }
   last.connect(output);
-  const position = region.start + (track.loop ? localOffset % region.length : localOffset);
+  const position = region.start + (track.loop ? (localOffset + sourceOffset) % region.length : localOffset + sourceOffset);
   const node = { source, gain, envelope, edge };
   try {
     if (window) source.start(when, position, duration);
     else if (track.loop || region.end === buffer.duration) source.start(when, position);
-    else source.start(when, position, region.length - localOffset);
+    else source.start(when, position, region.length - sourceOffset - localOffset);
   } catch (error) { releaseSource(node);throw error; }
   return node;
 }

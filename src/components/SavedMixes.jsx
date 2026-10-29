@@ -47,7 +47,7 @@ export default function SavedMixes({ studio }) {
       const editing = pending?.id === project.id;
       return <li className={'saved-item ' + (selected ? 'is-current' : '')} key={project.id}>
         <div className="saved-item-heading"><strong title={project.name}>{project.name}</strong>{selected && <span className="saved-active">Open</span>}</div>
-        <p>{project.mix.tracks.length} {project.mix.tracks.length === 1 ? 'layer' : 'layers'} · Master {project.mix.master}%</p>
+        <p>{project.mix.tracks.length} {project.mix.tracks.length === 1 ? 'clip' : 'clips'} · {project.mix.sources.length} sources · Master {project.mix.master}%</p>
         <div className="saved-item-actions"><button type="button" disabled={disabled} aria-label={'Open ' + project.name} onClick={() => requestOpen(project)}><Icon name="arrow" size={13} />Open</button>
           <button type="button" disabled={disabled} aria-label={'Rename ' + project.name} onClick={() => { setRename(project.name); setPending({ type: 'rename', id: project.id }); }}>Rename</button>
           <button type="button" className="saved-delete" disabled={disabled} aria-label={'Delete ' + project.name} onClick={() => setPending({ type: 'delete', id: project.id })}><Icon name="trash" size={13} /></button></div>
