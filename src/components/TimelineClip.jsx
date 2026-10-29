@@ -3,6 +3,7 @@ import { editTimelineWindow } from '../lib/timelineEditing.js';
 import { clipRegion } from '../lib/clipRegion.js';
 import { isSequenced, sequenceMetadata, stepSeconds } from '../lib/sequencerState.js';
 import { rhythmRegion } from '../lib/rhythmState.js';
+import { clockTime } from '../lib/timeFormat.js';
 
 export default function TimelineClip({ track, studio, window, snap, cursor }) {
   const [draft, setDraft] = useState(null);
@@ -84,9 +85,9 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
         style={{ left: `clamp(22px, ${position(at)}%, calc(100% - 22px))` }}><span>{action === 'start' ? '↤' : action === 'end' ? '↦' : action === 'fadeIn' ? '◩' : '◪'}</span></div>)}
       {cursor !== null && <div className="arrangement-cursor" style={{ left: cursor + '%' }} aria-hidden="true" />}
     </div>
-    <div className="arrangement-row-summary"><span>{current.start.toFixed(2)}–{current.end.toFixed(2)} s</span><span>Fade in {current.fadeIn.toFixed(2)} s · out {current.fadeOut.toFixed(2)} s</span></div>
+    <div className="arrangement-row-summary"><span>{clockTime(current.start, 2)}–{clockTime(current.end, 2)}</span>{(current.fadeIn > 0 || current.fadeOut > 0) && <span>Fade in {clockTime(current.fadeIn, 2)} · out {clockTime(current.fadeOut, 2)}</span>}</div>
     {draft && <p className="timeline-feedback" role="status">Release to apply timing. Playback keeps its position.</p>}
-    {region && !sequenced && <p className="timeline-feedback">Selected clip: {region.length.toFixed(2)} s. {track.loop ? 'Loops inside this window.' : audible < length ? 'Source ends at ' + (current.start + audible).toFixed(2) + ' s · ' + (length - audible).toFixed(2) + ' s silent before Exit. Fades fit the audible source.' : 'Plays once inside this window.'}</p>}
+    {region && !sequenced && !track.loop && audible < length && <p className="timeline-feedback">Audio ends at {clockTime(current.start + audible, 2)} · silent until {clockTime(current.end, 2)}</p>}
     {error && <p className="arrangement-error" role="alert">{error}</p>}
   </div>;
 }

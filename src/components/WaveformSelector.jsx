@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { boundSelection, moveSelection, sizedSelection } from '../lib/audioSelection.js';
+import { clockTime } from '../lib/timeFormat.js';
 import './WaveformSelector.css';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -96,9 +97,9 @@ export default function WaveformSelector({ track, info, studio, start, end, onCh
         aria-valuemin={edge === 'start' ? 0 : start + min} aria-valuemax={edge === 'start' ? end - min : duration} aria-valuenow={value} aria-valuetext={value.toFixed(3) + ' seconds'} onKeyDown={(event) => key(event, edge)} style={{ left: `clamp(12px, ${x(value)}%, calc(100% - 12px))` }}><span>{edge === 'start' ? '‹' : '›'}</span></div>; })}
       {preview !== null && preview >= view.start && preview <= view.end && <div className="waveform-audition-head" style={{ left: x(preview) + '%' }} />}
     </div>
-    <div className="waveform-window"><button type="button" aria-label="Pan waveform earlier" disabled={studio.busy || view.start <= 0} onClick={() => pan(-.5)}>←</button><span>{view.start.toFixed(2)}–{view.end.toFixed(2)} s visible · Selected {(end - start).toFixed(3)} s</span><button type="button" aria-label="Pan waveform later" disabled={studio.busy || view.end >= duration} onClick={() => pan(.5)}>→</button></div>
+    <div className="waveform-window"><button type="button" aria-label="Pan waveform earlier" disabled={studio.busy || view.start <= 0} onClick={() => pan(-.5)}>←</button><span>{clockTime(view.start, 2)}–{clockTime(view.end, 2)} visible</span><button type="button" aria-label="Pan waveform later" disabled={studio.busy || view.end >= duration} onClick={() => pan(.5)}>→</button></div>
     {rhythm && <div className="waveform-presets" role="group" aria-label="Sample length shortcuts">{[[.25, '¼ beat'], [1, '1 beat'], [2, '2 beats'], [4, '1 bar'], [8, '2 bars']].map(([beats, label]) => <button type="button" key={label} disabled={studio.busy} onClick={() => size(60 / studio.bpm * beats)} title={(60 / studio.bpm * beats).toFixed(3) + ' seconds at ' + studio.bpm + ' BPM'}>{label}</button>)}<button type="button" disabled={studio.busy} onClick={find}>Find next sound</button></div>}
-    <p className="waveform-help">Drag across the waveform to select. Drag the highlighted region to move it, or its edges to trim. Zoom in for detail; use the overview to move through the recording. Edge arrows adjust by keyboard; Shift makes smaller moves.</p>
+    <details className="workspace-help"><summary>Selection help</summary><p>Drag across the waveform to select. Move the selection or pull its edges to trim. Zoom for detail. Arrow keys move an edge; Shift makes smaller adjustments.</p></details>
     {message && <p className="waveform-help" role="status">{message}</p>}
   </div>;
 }

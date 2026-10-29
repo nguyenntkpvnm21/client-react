@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { SCENES } from '../lib/scenes.js';
 import Icon from './Icon';
+import { clockTime } from '../lib/timeFormat.js';
 import './SceneStarters.css';
 
 export default function SceneStarters({ studio }) {
@@ -21,11 +22,11 @@ export default function SceneStarters({ studio }) {
   }
   return <section className="scene-starters panel" aria-labelledby="scene-starters-title">
     <div className="section-heading"><div><p className="eyebrow">NATURE SETS THE SCENE</p><h2 id="scene-starters-title">Start from a scene</h2></div><span className="count-pill">03</span></div>
-    <p className="scene-intro">A starting point for your own sound. Hear a 12-second preview, then make every layer yours.</p>
+    <p className="scene-intro">Preview a scene, then use it as your starting point.</p>
     <div className="scene-cards">{SCENES.map((scene) => {
       const preview = studio.scenePreview?.id === scene.id;
       return <article className="scene-card" key={scene.id} style={{ '--scene-color': scene.color }}>
-        <div className="scene-card-heading"><span className="scene-icon"><Icon name={scene.icon} size={23} /></span><span>{scene.duration}s · {scene.layers.length} layers</span></div>
+        <div className="scene-card-heading"><span className="scene-icon"><Icon name={scene.icon} size={23} /></span><span>{clockTime(scene.duration)} · {scene.layers.length} layers</span></div>
         <h3>{scene.name}</h3><p>{scene.description}</p>
         <div className="scene-actions"><button type="button" disabled={studio.busy} aria-pressed={preview} aria-label={(preview ? 'Stop preview of ' : 'Hear preview of ') + scene.name} onClick={() => studio.hearScene(scene.id)}>
           <Icon name={preview ? 'pause' : 'play'} size={13} />{preview ? studio.scenePreview.status === 'loading' ? 'Cancel loading' : 'Stop preview' : 'Hear scene'}</button>
@@ -39,6 +40,5 @@ export default function SceneStarters({ studio }) {
       <div className="scene-actions"><a href="#/saved-mixes">Save or back up current mix</a><button type="button" disabled={studio.busy} onClick={async () => { if (await studio.useScene(pending)) setPending(null); }}>Start scene</button>
         <button type="button" disabled={studio.busy} onClick={keepCurrent}>Keep current mix</button></div>
     </div>}
-    <p className="scene-footnote">Uses the included Rain, Birds and Music recordings. Add your vocal or instrumental, then shape the scene in Arrangement.</p>
   </section>;
 }

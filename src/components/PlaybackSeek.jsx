@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { playbackTimeline, parsePlaybackTime, precisePlaybackTime } from '../lib/playbackTimeline.js';
+import { playbackTimeline, parsePlaybackTime } from '../lib/playbackTimeline.js';
+import { clockTime } from '../lib/timeFormat.js';
 import { formatTime } from '../lib/studioState.js';
 
 export default function PlaybackSeek({ studio }) {
@@ -30,8 +31,8 @@ export default function PlaybackSeek({ studio }) {
   return <div className="playback-seek">
     <div className="playback-seek-row">
       <button type="button" ref={timeButton} className="playback-time" disabled={disabled} aria-label="Go to playback time" title="Go to time" aria-expanded={jump !== null}
-        onClick={() => { if (jump !== null) closeJump();else { setJump(precisePlaybackTime(studio.elapsed));setError(''); } }}>{precisePlaybackTime(position)}<span aria-hidden="true">⌄</span></button>
-      <input className="playback-position" type="range" min="0" max={max} step="0.1" value={position} disabled={disabled} aria-label="Mix playback position" aria-valuetext={precisePlaybackTime(position)}
+        onClick={() => { if (jump !== null) closeJump();else { setJump(clockTime(studio.elapsed, 3));setError(''); } }}>{studio.status === 'playing' ? clockTime(Math.floor(position)) : clockTime(position, 2)}<span aria-hidden="true">⌄</span></button>
+      <input className="playback-position" type="range" min="0" max={max} step="0.1" value={position} disabled={disabled} aria-label="Mix playback position" aria-valuetext={clockTime(position, 2)}
         title={'Seek to a time · 0:00–' + formatTime(max)} style={{ '--played': max ? position / max * 100 + '%' : '0%' }}
         onPointerDown={(event) => { if (disabled) return;begin('pointer');event.currentTarget.setPointerCapture(event.pointerId); }}
         onChange={(event) => { const value = Number(event.target.value);if (gesture.current) update(value);else void studio.seekPlayback(value); }}
@@ -53,10 +54,10 @@ export default function PlaybackSeek({ studio }) {
       try { const value = parsePlaybackTime(jump, timeline.duration ?? Infinity);if (await studio.seekPlayback(value)) closeJump(); }
       catch (problem) { setError(problem.message); }
     }}>
-      <label htmlFor="playback-jump-time">Go to time<input id="playback-jump-time" autoFocus value={jump} inputMode="decimal" placeholder="1:30.5" aria-invalid={!!error} aria-describedby={error ? 'playback-jump-error' : 'playback-jump-help'} disabled={disabled}
+      <label htmlFor="playback-jump-time">Go to time · m:ss<input id="playback-jump-time" autoFocus value={jump} inputMode="text" placeholder="1:30" aria-invalid={!!error} aria-describedby={error ? 'playback-jump-error' : 'playback-jump-help'} disabled={disabled}
         onChange={(event) => { setJump(event.target.value);setError(''); }} /></label>
       <button type="submit" disabled={disabled}>Go</button><button type="button" onClick={closeJump}>Cancel</button>
-      <p id="playback-jump-help">Enter m:ss or seconds. Arrows on the seek bar move 5 seconds; Shift moves 0.1 seconds.</p>
+      <p id="playback-jump-help">Use 1:30 or 90. Add decimals for precise edits.</p>
       {error && <p className="playback-jump-error" id="playback-jump-error" role="alert">{error}</p>}
     </form>}
   </div>;

@@ -14,8 +14,7 @@ export default function ProjectTransfer({ studio }) {
   }
   return <section className="project-transfer" aria-labelledby="project-transfer-title">
     <div><p className="eyebrow">TAKE YOUR WORK WITH YOU</p><h3 id="project-transfer-title">Project backup</h3></div>
-    <p>Keep an editable copy of this workspace, including unsaved changes and every audio layer. Open it in NatureMix on another browser or device.</p>
-    <p>Apply any open clip or timing edits first. A WAV is a finished audio file; a project keeps your layers editable.</p>
+    <p>Move your editable mix and original recordings to another browser or device.</p>
     <div className="project-transfer-actions">
       <button type="button" disabled={disabled} onClick={studio.downloadProject}>Download project</button>
       <button type="button" disabled={disabled || studio.projectsBlocked} onClick={() => input.current?.click()}>Restore project file</button>
@@ -35,6 +34,6 @@ export default function ProjectTransfer({ studio }) {
       <div className="project-transfer-actions"><button type="submit" disabled={disabled || studio.savedMixes.length >= MAX_SAVED_MIXES}>Restore as new mix</button>
         <button type="button" disabled={disabled} onClick={studio.discardProjectFile}>Cancel restore</button></div>
     </form>}
-    <p className="project-transfer-note">Includes copies of library audio, so future library changes do not change this backup. Keep the .naturemix file somewhere safe.</p>
+    <details className="workspace-help"><summary>What does a project file include?</summary><p>All applied clip edits, settings and original recordings, including library audio. Apply open editor drafts first. A project stays editable; use Arrangement to download finished audio.</p></details>
   </section>;
 }
