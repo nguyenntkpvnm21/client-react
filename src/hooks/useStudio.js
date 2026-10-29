@@ -1,4 +1,5 @@
 import { clipName, ensureClipSlot, sourceId } from '../lib/audioSources.js';
+import { DRUMS, drumKit, drumTrack } from '../lib/drumStarter.js';
 import { duplicateClip, placedClip, splitClip, trimmedClip } from '../lib/clipInstances.js';
 import { initialLoopRegion, validateLoopRegion } from '../lib/loopRegion.js';
 import { checkExportCanceled, exportFilename, renderArrangement } from '../lib/renderArrangement.js';
@@ -301,6 +302,13 @@ export default function useStudio() {
     });
   }
 
+  function focusRhythm(id) {
+    requestAnimationFrame(() => {
+      const row = document.querySelector('[data-rhythm-id="' + CSS.escape(id) + '"]');
+      row?.scrollIntoView({ block: 'center' });row?.querySelector('.sequence-steps button')?.focus({ preventScroll: true });
+    });
+  }
+
   async function addSourceClip(id) {
     if (projectLock.current || importLock.current || booting) return;
     projectLock.current = true;setProjectBusy(true);
@@ -441,8 +449,11 @@ export default function useStudio() {
       const buffer = await engine.current.load(track, files.current[sourceId(track)]);
       if (!alive.current) return;
       const first = !rhythmMetadata(track).initialized;
+      const found = first && rhythmMetadata(track).sampleEnd == null ? engine.current.findSound(id, 0, .18) : null;
+      const original = mixRef.current.tracks.find((item) => item.id === id);
+      const prepared = found ? { ...original, rhythm: { ...rhythmMetadata(original), sampleStart: found.start, sampleEnd: found.end } } : original;
       const next = { ...mixRef.current, tracks: mixRef.current.tracks.map((item) => item.id === id ? {
-        ...enableRhythmTrack(item, buffer.duration),
+        ...enableRhythmTrack(prepared, buffer.duration),
         solo: first && mixRef.current.tracks.some((layer) => layer.solo) ? true : item.solo,
       } : item) };
       changeMix(next);
@@ -451,6 +462,43 @@ export default function useStudio() {
       if (!next.master) setNotice('Your rhythm is ready. Raise Master volume to hear it.');
     } catch (error) { if (alive.current) setNotice(error.message); }
     finally { importLock.current = false; if (alive.current) setRhythmBusy(false); }
+  }
+
+  async function addDrumBeat(ids = DRUMS.map((drum) => drum.id)) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
+    if (!ids.length || new Set(ids).size !== ids.length || ids.some((id) => !DRUMS.some((drum) => drum.id === id))) return;
+    const current = mixRef.current;
+    if (current.sources.length >= MAX_TRACKS || current.tracks.length + ids.length > MAX_CLIPS) {
+      setNotice('Not enough space. Add a single drum or remove an unused recording first.'); return;
+    }
+    importLock.current = true; setRhythmBusy(true); setNotice(''); stopPreview();
+    const added = [];
+    let committed = false;
+    try {
+      await engine.current.ensureContext().resume();
+      const { drums, file } = await drumKit(ids);
+      const source = { id: 'custom-' + crypto.randomUUID(), name: file.name, role: 'music', catalogId: null };
+      for (const drum of drums) {
+        const track = drumTrack(drum, 'custom-clip-' + crypto.randomUUID(), source.id, current.tracks.some((item) => item.solo));
+        if (mixRef.current.tracks.some((item) => item.name === track.name)) track.name = clipName(track.name, mixRef.current.tracks);
+        added.push(track);
+        await engine.current.load(track, file);
+        if (!alive.current) return;
+      }
+      await saveAudio(source.id, file);
+      if (!alive.current) return;
+      // Three editable clips share one recording, one persisted WAV and one decoded buffer.
+      files.current[source.id] = file;
+      const next = { ...mixRef.current, sources: [...mixRef.current.sources, source], tracks: [...mixRef.current.tracks, ...added] };
+      changeMix(next); committed = true; focusRhythm(added[0].id);
+      const position = engine.current.position();
+      await rescheduleMix(next, next.arrangement.enabled && position >= next.arrangement.duration ? 0 : position, true);
+      setNotice('Drum beat added. Tap lit steps to remove hits, or dark steps to add them. Existing clips are kept.' + (!next.master ? ' Raise Master to hear it.' : ''));
+    } catch (error) { if (alive.current) setNotice(error.message || 'Could not add the drum beat.'); }
+    finally {
+      if (!committed) for (const track of added) engine.current.forget(track.id);
+      importLock.current = false; if (alive.current) setRhythmBusy(false);
+    }
   }
 
   async function previewSample(id) {
@@ -523,13 +571,23 @@ export default function useStudio() {
       catch (error) { if (alive.current) setNotice(error.message); }
       return;
     }
+    if (location === 'sequencer') {
+      const current = mixRef.current, position = engine.current.position(), resume = statusRef.current === 'playing';
+      const next = { ...current, tracks: current.tracks.map((track) => {
+        if (track.id !== id) return track;
+        const edited = { ...track, rhythm: { ...rhythmMetadata(track), sampleStart: region.clipStart, sampleEnd: region.clipEnd } };
+        return rhythmMetadata(track).initialized ? edited : { ...enableRhythmTrack(edited, duration), solo: track.solo || current.tracks.some((item) => item.solo) };
+      }) };
+      closeClip(); changeMix(next); focusRhythm(id);
+      try { await rescheduleMix(next, position, resume); }
+      catch (error) { if (alive.current) setNotice(error.message); return; }
+      setNotice('Sample ready. Hear rhythm previews this row; Play full mix includes your other clips.');
+      return;
+    }
     engine.current.restart();
     setElapsed(0);
     setPreview(null);
-    if (location === 'sequencer') {
-      const track = mixRef.current.tracks.find((item) => item.id === id);
-      updateTrack(id, { rhythm: { ...rhythmMetadata(track), sampleStart: reset ? 0 : region.clipStart, sampleEnd: reset ? null : region.clipEnd } });
-    } else updateTrack(id, { ...(reset ? { clipStart: 0, clipEnd: null } : region), sourceOffset: undefined, gainEnvelope: undefined, loop });
+    updateTrack(id, { ...(reset ? { clipStart: 0, clipEnd: null } : region), sourceOffset: undefined, gainEnvelope: undefined, loop });
     setNotice(reset ? 'Full recording restored. Press Play to listen.' : 'Clip applied. The mix starts at the beginning of each selected region.');
     setEditorId(null);
   }
@@ -871,7 +929,7 @@ export default function useStudio() {
     transfer, restoreInfo, discardProjectFile, cancelTransfer, downloadProject: () => transferAction('backup'),
     inspectProjectFile: (file) => transferAction('inspect', file), restoreProject: (name) => transferAction('restore', name),
     scenePreview, hearScene, stopScene, useScene,
-    editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm,
+    editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm, addDrumBeat,
     busy: booting || importing || rhythmBusy || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
     setBpm,
     setSequenced: (id, enabled) => editPattern(id, (sequence) => ({ ...sequence, enabled })),

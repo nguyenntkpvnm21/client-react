@@ -1,4 +1,4 @@
-import { rhythmRegion } from '../lib/rhythmState.js';
+import { rhythmMetadata, rhythmRegion } from '../lib/rhythmState.js';
 import WaveformSelector from './WaveformSelector';
 import { isSequenced } from '../lib/sequencerState.js';
 import { useId, useState } from 'react';
@@ -8,7 +8,11 @@ import { parsePlaybackTime } from '../lib/playbackTimeline.js';
 import './ClipEditor.css';
 
 function RegionControls({ track, info, studio, location }) {
-  const region = location === 'sequencer' ? rhythmRegion(track, info.duration) : clipRegion(track, info.duration);
+  const [region] = useState(() => {
+    if (location !== 'sequencer') return clipRegion(track, info.duration);
+    if (rhythmMetadata(track).sampleEnd != null || rhythmMetadata(track).initialized) return rhythmRegion(track, info.duration);
+    return studio.findSound(track.id, 0, .18) ?? { start: 0, end: Math.min(.18, info.duration) };
+  });
   const [start, setStart] = useState(clockTime(region.start, 3));
   const [end, setEnd] = useState(clockTime(region.end, 3));
   const [loop, setLoop] = useState(track.loop);
@@ -18,10 +22,20 @@ function RegionControls({ track, info, studio, location }) {
   let error = '';
   try { bounds = validateRegion(parsePlaybackTime(start), parsePlaybackTime(end), info.duration); } catch (problem) { error = problem.message; }
   const preview = studio.preview?.id === track.id && studio.preview.kind !== 'pattern' ? studio.preview : null;
+  const [cursor, setCursor] = useState({ preview: null, position: region.start });
+  // Retain the final audition position when the native source ends or another transport stops it.
+  if (preview !== cursor.preview) setCursor({ preview, position: preview?.position ?? cursor.preview?.position ?? cursor.position });
+  const position = preview?.position ?? cursor.position;
   const disabled = studio.busy;
-  function change(setter, value) { studio.stopPreview(); setter(value); }
+  function stopListening() { setCursor({ preview: null, position }); studio.stopPreview(); }
+  function change(setter, value) { stopListening(); setter(value); }
+  function seekRecording(value, play) {
+    const point = Math.max(0, Math.min(value, info.duration - Math.min(.05, info.duration)));
+    studio.stopPreview(); setCursor({ preview: null, position: point });
+    if (play) void studio.previewClip(track.id, point, info.duration, false);
+  }
   async function audition() {
-    if (preview || previewBusy) { studio.stopPreview(); setPreviewBusy(false); return; }
+    if (preview || previewBusy) { stopListening(); setPreviewBusy(false); return; }
     if (!bounds) return;
     setPreviewBusy(true);
     try { await studio.previewClip(track.id, bounds.clipStart, bounds.clipEnd, location === 'sequencer' ? false : loop); }
@@ -29,7 +43,8 @@ function RegionControls({ track, info, studio, location }) {
   }
   return <div className="clip-controls">
     <WaveformSelector track={track} info={info} studio={studio} start={bounds?.clipStart ?? region.start} end={bounds?.clipEnd ?? region.end} rhythm={location === 'sequencer'}
-      onChange={(value) => { studio.stopPreview(); setStart(clockTime(value.start, 3)); setEnd(clockTime(value.end, 3)); }} />
+      position={position} onSeek={seekRecording} onStop={stopListening}
+      onChange={(value, keepPlaying = false) => { if (!keepPlaying) stopListening(); setStart(clockTime(value.start, 3)); setEnd(clockTime(value.end, 3)); }} />
     <details><summary>Type start &amp; end</summary>
     <div className="clip-fields">
       <div><label htmlFor={uid + '-start'}>Start · m:ss</label>
@@ -45,10 +60,10 @@ function RegionControls({ track, info, studio, location }) {
     <div className="clip-actions">
       <button type="button" className="clip-apply" disabled={disabled || !!error} onClick={() => studio.applyClip(track.id, bounds.clipStart, bounds.clipEnd, loop, false, location)}>{location === 'sequencer' ? 'Use this sample' : 'Apply range'}</button>
       <button type="button" disabled={disabled || !!error} onClick={audition}>{preview || previewBusy ? 'Stop preview' : location === 'sequencer' ? 'Hear sample' : 'Preview clip'}</button>
-      <button type="button" disabled={disabled} onClick={() => studio.applyClip(track.id, 0, info.duration, track.loop, true, location)}>{location === 'sequencer' ? 'Use full recording' : 'Reset clip'}</button>
+      {location !== 'sequencer' && <button type="button" disabled={disabled} onClick={() => studio.applyClip(track.id, 0, info.duration, track.loop, true, location)}>Reset clip</button>}
     </div>
-    {isSequenced(track) && location !== 'sequencer' && <p className="clip-help">Rhythm is enabled. Normal clip edits are heard after choosing Use normal playback in Rhythm.</p>}
-    <p className="clip-help">{location === 'arrangement' ? 'Applying keeps your playback position.' : 'Applying restarts the mix.'} Your original recording is kept.</p>
+    {isSequenced(track) && location !== 'sequencer' && <p className="clip-help">Rhythm is enabled. Turn rhythm off to hear normal clip edits.</p>}
+    <p className="clip-help">{location === 'arrangement' || location === 'sequencer' ? 'Applying keeps your mix position.' : 'Applying restarts the mix.'} Your original recording is kept.</p>
   </div>;
 }
 

@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 183 tests. No additional testing dependency is required.
+The automated suite has 188 tests, plus 8 separate Focus Session tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -140,7 +140,7 @@ or editing a layer never changes its original file on disk.
 
 Every layer has independent source regions:
 
-- **Edit normal clip** in Studio chooses the source for normal playback.
+- **Edit audio** in Studio or Arrangement chooses the source for normal playback.
 - **Edit sample** in Rhythm chooses the source repeated by rhythm hits.
 
 Applying or resetting either region preserves the other. A layer uses one of
@@ -152,15 +152,21 @@ normal region overwritten by an older version cannot be inferred or recovered.
 
 The editor loads actual decoded samples and offers:
 
-1. Drag across the large waveform to select a region.
-2. Drag the highlighted region to move it without changing its length.
-3. Drag either edge to trim. Edge handles also support arrow keys; Shift makes
-   smaller adjustments.
+1. Listen mode is the default. Click or tap to hear the recording at that point
+   without changing the selected range. Recording audition has its own cursor
+   and clock; it pauses the mix and leaves the shared mix position untouched.
+2. Use the full-recording overview to locate an event. The detailed waveform
+   opens an eight-second window there, with a time ruler. Set start here and
+   Set end here mark the region while audition continues; Stop here retains the
+   recording cursor. Preview completion also retains its last observed position.
+3. Select region mode lets you drag a new selection. A tap alone still preserves
+   it. Drag Move to shift the region, or either 44-pixel edge target to trim.
+   Edge and Move controls support arrows (0.01 seconds) and Shift (0.001).
 4. Zoom in/out, Show selection, Full recording, pan buttons and a full-recording
    overview to move through long recordings. Zoom regenerates waveform detail
    from that visible portion, including both stereo channels.
-5. Rhythm duration shortcuts: quarter beat, one beat, two beats, one bar and two
-   bars at the current BPM. These resize the draft; they do not change tempo or
+5. Rhythm duration shortcuts: quarter beat, one beat and two beats, starting at
+   the recording cursor. These resize the draft; they do not change tempo or
    stretch the source recording.
 6. Find next sound moves the draft to a later audible region, wrapping to the
    first detected region when necessary. Detection uses signal amplitude and can
@@ -169,8 +175,10 @@ The editor loads actual decoded samples and offers:
 
 Selections are nondestructive and must be at least 0.05 seconds, unless the
 recording itself is shorter. The editor changes a draft until Apply range or Use
-this sample. Applying resets the shared playback position. Closing or navigating
-away discards the draft.
+this sample. Applying in Arrangement or Rhythm keeps the shared mix position
+and its current play/pause intent; Studio normal-clip apply still restarts it.
+Closing or navigating away discards the draft. Use full recording is removed
+from the sample editor to avoid accidentally repeating a whole song per hit.
 
 Hear sample inside Edit sample auditions the draft once. Preview clip does the
 same for a normal clip draft. Both pause the mix and use a separate 40% audition gain, bypassing layer
@@ -182,12 +190,22 @@ A loop contains four beats and sixteen steps. BPM is an integer from 40 to 240,
 defaulting to 100. A lit step starts the selected rhythm sample again; Four beats
 does not divide a source recording into four different slices.
 
-- Create rhythm initializes steps 1, 5, 9 and 13 only on first creation. If no
-  sample was selected, it starts with up to 0.18 seconds from the recording.
+- Add drum beat adds Kick, Snare and Hi-hat with complementary starter patterns
+  and starts the mix. They are original locally synthesized one-shots, packed
+  into one ordinary WAV with three independent clip/sample ranges. All three
+  rows use one source slot, one persisted blob and one decoded PCM buffer. The
+  source and clip limits remain eight and 32. Add one drum is also available.
+  Existing clips and playback mode are kept; a failure while preparing or saving
+  the drums publishes none of the new rows. Drums travel in saved mixes and backups.
+- Uninitialized recordings stay under Use a sample from your recordings. Choose
+  sample opens a short audible draft without changing the mix. Use this sample
+  initializes four beats and focuses the new row. Existing initialized rows stay
+  visible, with level and Mute beside their grids. Adding drums also focuses the
+  first new row; duplicate drum names receive a numbered suffix.
 - Rhythm on/off controls whether the row contributes its pattern or normal clip
   to the full mix. Turning it on again restores the stored sample and steps,
   including an intentionally empty pattern. Re-enabling a stopped row does not
-  start the mix automatically. First-time Create rhythm still starts playback.
+  start the mix automatically.
 - Initialized rows keep their grid visible and editable while off in the mix.
 - Pattern options contains Four beats, Clear steps and Sample tails. Four beats
   replaces only the steps; Clear leaves them intentionally empty. Less-used
@@ -205,6 +223,18 @@ Stop preview, sample/tail-policy/speed changes, navigation, project opening,
 removal, hidden-tab handling and disposal cancel pending/scheduled audition audio.
 A cleared pattern has no preview hits. Play full mix remains a distinct shared
 playback action; Hear sample is available inside the sample editor.
+
+Chromium checks for this update include finding/marking a sample in a 3:20
+recording, mouse and emulated touch selection/move/trim, Shift adjustments,
+live drum edits, failed-storage preservation, save/reload, actual project
+download and restore in a second profile, play/seek, and a downloaded six-second
+stereo WAV exported while a shorter section loop was active. The shared drum
+source and separate one-shots produced native rendered WAVs differing by at most
+one 16-bit PCM level. Four pages at six viewport sizes (320–1440 px) were checked
+for overflow, bottom actions and the time-entry popup. Physical touch devices,
+Safari/Firefox and a beginner user study remain unverified. Rhythm still makes
+one-bar sample patterns; it does not provide melodic instruments or song-length
+pattern arrangement.
 
 ### Sample tails
 

@@ -1,5 +1,17 @@
 import { MIN_CLIP_SECONDS } from './clipRegion.js';
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+export function listeningView(position, duration, span = 8) {
+  const size = Math.min(duration, Math.max(.1, span));
+  const start = clamp(position - size / 3, 0, duration - size);
+  return { start, end: start + size };
+}
+export function markSelection(edge, position, start, end, duration) {
+  const min = Math.min(MIN_CLIP_SECONDS, duration);
+  const point = clamp(position, 0, duration);
+  return edge === 'start'
+    ? boundSelection(Math.min(point, duration - min), Math.max(end, point + min), duration)
+    : boundSelection(Math.min(start, point - min), Math.max(min, point), duration);
+}
 export function boundSelection(start, end, duration) {
   const min = Math.min(MIN_CLIP_SECONDS, duration);
   const a = clamp(Math.min(start, end), 0, Math.max(0, duration - min));

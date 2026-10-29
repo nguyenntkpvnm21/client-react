@@ -7,7 +7,7 @@
 .waveform-editor svg path { stroke: #7bb9a4; stroke-width: 1.3; }
 .waveform-overview > span { position: absolute; top: 0; bottom: 0; border: 1px solid #beffe0; background: #8dffd41a; pointer-events: none; min-width: 2px; }
 .waveform-selection { height: 144px; position: relative; border: 1px solid #557e6b; border-radius: 8px; overflow: hidden; background: #071412; touch-action: none; user-select: none; cursor: crosshair; }
-.waveform-selected { position: absolute; inset-block: 0; background: #71f2ba28; border-inline: 1px solid #a7edcd; cursor: grab; }
+.waveform-selected { position: absolute; inset-block: 0; background: #71f2ba28; border-inline: 1px solid #a7edcd; }
 .waveform-handle { position: absolute; top: 0; bottom: 0; width: 24px; transform: translateX(-50%); display: grid; place-items: center; cursor: ew-resize; color: #e1ffee; background: #152e2690; border-inline: 2px solid #b9f6d9; }
 .waveform-handle span { font-size: 23px; pointer-events: none; }
 .waveform-handle:focus-visible { outline: 2px solid white; outline-offset: -4px; background: #285542; }
@@ -19,3 +19,20 @@
 .clip-controls .clip-fields { margin-top: 16px; }
 .clip-controls > details { margin: 16px 0; }
 .clip-controls > details > summary { color: #bddbcd; font-size: 12px; cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.sample-transport { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sample-transport output { margin-right: auto; padding: 8px; color: #eee; font-size: 14px; font-variant-numeric: tabular-nums; }
+.sample-transport output span { color: #aaa; font-size: 12px; }
+.waveform-context, .sample-selection-summary { color: #aaa; font-size: 12px; line-height: 1.7; margin: 8px 0; }
+.sample-selection-summary strong { color: #ddd; font-weight: 500; font-variant-numeric: tabular-nums; }
+.waveform-ruler { display: flex; justify-content: space-between; gap: 4px; margin: 14px 0 6px; color: #bbb; font-size: 11px; font-variant-numeric: tabular-nums; }
+.waveform-modes { display: flex; gap: 4px; }
+.app-shell .waveform-editor .waveform-toolbar .waveform-modes button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+.waveform-view-options { display: flex; align-items: center; }
+.waveform-view-options summary { min-height: 44px; padding: 12px; color: #bbb; cursor: pointer; font-size: 12px; }
+.waveform-view-options button { margin: 4px; }
+.waveform-overview > i { position: absolute; top: 0; bottom: 0; width: 2px; background: white; pointer-events: none; }
+.waveform-handle { width: 44px; background: transparent !important; border: 0; }
+.waveform-handle span { background: #252525df; border: 1px solid var(--cyan, #7bb9a4); padding: 6px; border-radius: 4px; }
+.waveform-move { position: absolute; top: 0; left: 22px; right: 22px; min-height: 44px; display: grid; place-items: center; background: #333a; color: #eee; font-size: 10px; cursor: grab; white-space: nowrap; overflow: hidden; }
+.waveform-move:focus-visible { outline: 2px solid white; outline-offset: -2px; }
+@media(max-width:580px) { .sample-transport { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .sample-transport output { margin: 0; padding-inline: 0; } .waveform-ruler span { font-size: 10px; } .waveform-ruler span:nth-child(2), .waveform-ruler span:nth-child(4) { visibility: hidden; } }
