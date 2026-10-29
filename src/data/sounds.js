@@ -1,4 +1,5 @@
-export const MAX_TRACKS = 8;
+export const MAX_TRACKS = 8; // Unique source recordings.
+export const MAX_CLIPS = 32;
 export const MAX_FILE_BYTES = 30 * 1024 * 1024;
 export const ROLES = [
   { id: 'nature', label: 'Nature sound' },

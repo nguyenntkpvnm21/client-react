@@ -83,6 +83,21 @@ test('normal loops enter at the selected source start and stop at the layer exit
   engine.dispose();
 });
 
+test('touching scaled fades retain their ramps when playback starts or resumes inside a split', () => {
+  const window = fitFades({ start: 0, end: 12, fadeIn: 2, fadeOut: 3 }, 4);
+  // 4 - 2.4 sorts slightly before 1.6; a Set event there would erase fade-in.
+  assert.ok(window.end - window.fadeOut < window.start + window.fadeIn);
+  for (const position of [0, 1.25]) {
+    const { gains, context } = setup();
+    scheduleWindowEnvelope(context.createGain().gain, 10, position, window);
+    const events = gains[0].gain.events;
+    assert.equal(events.length, 3);
+    assert.equal(events[0][0], 'set');close(events[0][1], position / 1.6);
+    assert.equal(events[1][0], 'ramp');close(events[1][1], 1);close(events[1][2], 11.6 - position);
+    assert.equal(events[2][0], 'ramp');close(events[2][1], 0);close(events[2][2], 14 - position);
+  }
+});
+
 test('one-shots finish at the shorter source end and scale fades to the audible duration', async () => {
   const { engine, sources } = setup();const layer = track({ loop: false, clipEnd: 2.2, placement: { start: 1, end: 5, fadeIn: 1, fadeOut: 1 } });
   await engine.play([layer], { rain: file }, 75, 120, config);

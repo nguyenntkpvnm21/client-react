@@ -1,3 +1,4 @@
+import { sourceId, sourceTracks } from './audioSources.js';
 import { changeProject, referencedAudio, validateProject, validateProjects } from './savedMixes.js';
 
 let connection;
@@ -73,7 +74,7 @@ export async function writeSavedMix(action, data) {
         result = changeProject(request.result, action, data);
         if (action === 'delete') { projects.delete(data.id); return; }
         const project = result.find((item) => item.id === data.id);
-        const ids = action === 'rename' ? [] : [...referencedAudio(project.mix.tracks, [])];
+        const ids = action === 'rename' ? [] : [...referencedAudio(project.mix, [])];
         const put = () => { try { projects.put(project); } catch (error) { abort(error); } };
         if (!ids.length) { put(); return; }
         let remaining = ids.length;
@@ -107,7 +108,7 @@ export async function readSavedMix(id) {
         if (!request.result) throw new Error('This saved mix no longer exists. Reload the page to refresh the list.');
         const project = validateProject(request.result);
         result = { project, files: {} };
-        for (const track of project.mix.tracks.filter((item) => !item.catalogId)) {
+        for (const track of sourceTracks(project.mix).filter((item) => !item.catalogId)) {
           const fileRequest = transaction.objectStore('files').get(track.id);
           fileRequest.onsuccess = () => {
             if (fileRequest.result?.file instanceof Blob) result.files[track.id] = fileRequest.result.file;
@@ -134,8 +135,8 @@ export async function restoreSavedMix({ id, name, mix, files }) {
       try {
         result = changeProject(request.result, 'save', { id, name, mix });
         const project = result.find((item) => item.id === id);
-        if (project.mix.tracks.some((track) => track.catalogId || !(files.get(track.id) instanceof Blob))
-          || files.size !== project.mix.tracks.length) throw new Error('The project audio is incomplete.');
+        if (sourceTracks(project.mix).some((track) => track.catalogId || !(files.get(sourceId(track)) instanceof Blob))
+          || files.size !== sourceTracks(project.mix).length) throw new Error('The project audio is incomplete.');
         let remaining = files.size;
         if (!remaining) { projects.put(project); return; }
         for (const [fileId, file] of files) {

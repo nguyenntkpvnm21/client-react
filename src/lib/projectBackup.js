@@ -1,3 +1,4 @@
+import { sourceId, sourceTracks } from './audioSources.js';
 import { MAX_FILE_BYTES, MAX_TRACKS } from '../data/sounds.js';
 import { mixName } from './savedMixes.js';
 import { serializeMix, validateMix } from './studioState.js';
@@ -22,19 +23,21 @@ export async function createProjectBackup({ mix, name, resolveAudio, signal, onP
   checkCanceled(signal);
   const snapshot = serializeMix(mix);
   // A portable project must not depend on future catalog IDs, names or defaults.
-  const portable = { ...snapshot, tracks: snapshot.tracks.map((track, index) => ({ ...track, id: 'custom-backup-' + index, catalogId: null })) };
+  const ids = new Map(snapshot.sources.map((source, index) => [source.id, 'custom-backup-' + index]));
+  const portable = { ...snapshot, sources: snapshot.sources.map((source) => ({ ...source, id: ids.get(source.id), catalogId: null })),
+    tracks: snapshot.tracks.map((track, index) => ({ ...track, id: 'custom-backup-clip-' + index, sourceId: ids.get(sourceId(track)), catalogId: null })) };
   const assets = [], blobs = [];
-  for (const track of snapshot.tracks) {
+  for (const track of snapshot.sources) {
     checkCanceled(signal);
-    onProgress({ stage: 'Packing ' + track.name, progress: assets.length / Math.max(1, snapshot.tracks.length) });
+    onProgress({ stage: 'Packing ' + track.name, progress: assets.length / Math.max(1, snapshot.sources.length) });
     const blob = await resolveAudio(track);
     if (!(blob instanceof Blob)) throw new Error('The original audio for ' + track.name + ' is missing. No backup was created.');
     if (!blob.size || blob.size > MAX_FILE_BYTES) throw new Error(track.name + ' must be between 1 byte and 30 MiB to back up.');
-    assets.push({ trackId: portable.tracks[assets.length].id, size: blob.size, type: blob.type || 'application/octet-stream', sha256: await digest(blob) });
+    assets.push({ trackId: portable.sources[assets.length].id, size: blob.size, type: blob.type || 'application/octet-stream', sha256: await digest(blob) });
     checkCanceled(signal);
     blobs.push(blob);
   }
-  const manifest = new TextEncoder().encode(JSON.stringify({ format: 'naturemix-project', version: 1,
+  const manifest = new TextEncoder().encode(JSON.stringify({ format: 'naturemix-project', version: 2,
     name: mixName(name), createdAt: new Date().toISOString(), mix: portable, assets }));
   if (manifest.length > MAX_MANIFEST_BYTES) throw invalid();
   const header = new Uint8Array(HEADER_BYTES);header.set(MAGIC);
@@ -53,20 +56,24 @@ export async function inspectProjectBackup(file, onProgress = () => {}, signal) 
   let manifest;
   try { manifest = JSON.parse(await file.slice(HEADER_BYTES, HEADER_BYTES + length).text()); } catch { throw invalid(); }
   const mix = validateMix(manifest?.mix);
-  if (manifest?.format !== 'naturemix-project' || manifest.version !== 1 || !mix
-    || canonical(serializeMix(mix)) !== canonical(manifest.mix) || !Array.isArray(manifest.assets)
-    || manifest.assets.length !== mix.tracks.length || typeof manifest.createdAt !== 'string'
+  const normalized = mix && serializeMix(mix);
+  if (normalized && manifest.version === 1) {
+    delete normalized.sources;normalized.tracks = normalized.tracks.map((track) => { const copy = { ...track };delete copy.sourceId;return copy; });
+  }
+  if (manifest?.format !== 'naturemix-project' || ![1, 2].includes(manifest.version) || !mix
+    || canonical(normalized) !== canonical(manifest.mix) || !Array.isArray(manifest.assets)
+    || manifest.assets.length !== sourceTracks(mix).length || typeof manifest.createdAt !== 'string'
     || !Number.isFinite(Date.parse(manifest.createdAt))) throw invalid();
   const name = mixName(manifest.name);
   let offset = HEADER_BYTES + length;
   const files = new Map();
   for (const asset of manifest.assets) {
     checkCanceled(signal);
-    const track = mix.tracks.find((item) => item.id === asset?.trackId);
+    const track = sourceTracks(mix).find((item) => item.id === asset?.trackId);
     if (!track || files.has(track.id) || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > MAX_FILE_BYTES
       || typeof asset.type !== 'string' || asset.type.length > 160 || !/^[a-f0-9]{64}$/.test(asset.sha256)
       || offset + asset.size > file.size) throw invalid();
-    onProgress({ stage: 'Checking ' + track.name, progress: files.size / Math.max(1, mix.tracks.length) });
+    onProgress({ stage: 'Checking ' + track.name, progress: files.size / Math.max(1, sourceTracks(mix).length) });
     const blob = file.slice(offset, offset + asset.size, asset.type);
     if (await digest(blob) !== asset.sha256) throw new Error('Audio integrity check failed for ' + track.name + '. Choose an intact backup.');
     checkCanceled(signal);
@@ -79,15 +86,14 @@ export async function inspectProjectBackup(file, onProgress = () => {}, signal) 
 }
 
 export function restoredProject(backup, name, uuid = () => crypto.randomUUID()) {
-  const files = new Map();
-  const tracks = backup.mix.tracks.map((track) => {
-    // Included audio becomes a private imported layer, independent of future library changes.
-    const id = 'custom-' + uuid();
-    const blob = backup.files.get(track.id);
+  const files = new Map(), ids = new Map();
+  const sources = sourceTracks(backup.mix).map((source) => {
+    const id = 'custom-' + uuid();ids.set(source.id, id);
+    const blob = backup.files.get(source.id);
     if (!(blob instanceof Blob)) throw invalid();
-    const file = new File([blob], track.name, { type: blob.type });
-    files.set(id, file);
-    return { ...track, id, catalogId: null };
+    files.set(id, new File([blob], source.name, { type: blob.type }));
+    return { ...source, id, catalogId: null };
   });
-  return { id: 'mix-' + uuid(), name: mixName(name), mix: serializeMix({ ...backup.mix, tracks }), files };
+  const tracks = backup.mix.tracks.map((track) => ({ ...track, id: 'custom-' + uuid(), sourceId: ids.get(sourceId(track)), catalogId: null }));
+  return { id: 'mix-' + uuid(), name: mixName(name), mix: serializeMix({ ...backup.mix, sources, tracks }), files };
 }

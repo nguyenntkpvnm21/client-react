@@ -1,3 +1,5 @@
+import ClipEditor from './ClipEditor';
+import SourcePool from './SourcePool';
 import ArrangementSection from './ArrangementSection';
 import ArrangementExport from './ArrangementExport';
 import TimelineClip from './TimelineClip';
@@ -57,7 +59,7 @@ function ArrangementRow({ track, studio, cursor, snap }) {
   const [loading, setLoading] = useState(false);
   const active = studio.arrangement.enabled && studio.status === 'playing' && studio.elapsed >= window.start && studio.elapsed < window.end;
   function done() { setEditing(false); editButton.current?.focus(); }
-  return <article className={'arrangement-row ' + track.role + (active ? ' is-active' : '')} aria-label={track.name + ' arrangement'}>
+  return <article data-clip-id={track.id} className={'arrangement-row ' + track.role + (active ? ' is-active' : '')} aria-label={track.name + ' arrangement'}>
     <div className="arrangement-row-heading"><div><h3 title={track.name}>{track.name}</h3><span>{isSequenced(track) ? 'Rhythm pattern' : track.loop ? 'Looping layer' : 'One-shot layer'}</span></div>
       <div className="arrangement-row-controls">
         <button type="button" aria-label={'Solo ' + track.name + ' in arrangement'} aria-pressed={track.solo} disabled={studio.projectBusy} onClick={() => studio.updateTrack(track.id, { solo: !track.solo })}>Solo</button>
@@ -69,6 +71,15 @@ function ArrangementRow({ track, studio, cursor, snap }) {
       {!studio.details[track.id] && <button type="button" disabled={loading || studio.busy} onClick={async () => { setLoading(true); try { await studio.loadTrackInfo(track.id); } finally { setLoading(false); } }}>{loading ? 'Loading waveform…' : 'Load waveform'}</button>}
       <span>{isSequenced(track) ? 'Rhythm follows the shared beat grid.' : studio.details[track.id] ? 'Hatched areas are silent after the source ends.' : 'Load waveform to see source length and any silence.'}</span>
     </div>
+    <p className="clip-instance-source">Source: {studio.sources.find((source) => source.id === (track.sourceId || track.id))?.name || track.name}{track.sourceOffset ? ' · starts ' + track.sourceOffset.toFixed(2) + ' s into the loop' : ''}</p>
+    <div className="clip-instance-tools">
+      <button type="button" disabled={studio.busy} aria-label={'Duplicate ' + track.name} onClick={() => studio.duplicateClip(track.id)}>Duplicate</button>
+      <button type="button" disabled={studio.busy || !studio.arrangement.enabled || isSequenced(track)} title={isSequenced(track) ? 'Switch to normal playback to split audio' : 'Set the playhead inside this clip, then split'} aria-label={'Split ' + track.name + ' at playhead'} onClick={() => studio.splitClip(track.id)}>Split at playhead</button>
+      <button type="button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'arrangement'} aria-label={'Edit audio for ' + track.name} onClick={() => studio.editorId === track.id && studio.editorLocation === 'arrangement' ? studio.closeClip() : studio.openClip(track.id, 'arrangement')}>Edit audio</button>
+      <button type="button" disabled={studio.busy} aria-label={'Remove clip ' + track.name} onClick={() => studio.removeTrack(track.id)}>Remove clip</button>
+      <label>Level<input type="range" min="0" max="100" value={track.volume} aria-label={track.name + ' arrangement volume'} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
+    </div>
+    {studio.editorId === track.id && studio.editorLocation === 'arrangement' && <ClipEditor track={track} info={studio.details[track.id]} studio={studio} location="arrangement" />}
     {editing && <TimingForm key={JSON.stringify(track.placement) + '-' + duration} track={track} studio={studio} onDone={done} />}
   </article>;
 }
@@ -118,16 +129,17 @@ export default function Arrangement({ studio }) {
       <div className="arrangement-position"><span className={studio.arrangement.enabled ? 'arrangement-mode is-on' : 'arrangement-mode'}>{studio.arrangement.enabled ? 'Timeline on' : 'Free mix mode'}</span>
         <output aria-label="Arrangement playback position">{formatTime(studio.arrangement.enabled ? studio.elapsed : 0)} / {formatTime(duration)}</output>
         <span>{studio.arrangement.enabled && studio.status === 'finished' ? 'Finished. Play again from the beginning.' : studio.loopSection.enabled ? 'Looping ' + studio.loopSection.start.toFixed(2) + '–' + studio.loopSection.end.toFixed(2) + ' seconds.' : 'Playback stops at the composition end.'}</span></div></div>
-    <div className="timeline-instructions"><p id="timeline-help">Drag a clip to move it. Bottom handles trim Entry/Exit; top handles adjust fades. Release applies timing and keeps playback in place. Arrow keys move handles; Shift makes fine adjustments.</p><label><input type="checkbox" checked={snap} onChange={(event) => setSnap(event.target.checked)} />Snap to beats ({studio.bpm} BPM)</label></div>
+    <div className="timeline-instructions"><p id="timeline-help">Pause at a cut point, then use Split at playhead. Drag a clip to move it. Bottom handles trim audio; top handles adjust fades. Release applies timing and keeps playback in place. Arrow keys move handles; Shift makes fine adjustments.</p><label><input type="checkbox" checked={snap} onChange={(event) => setSnap(event.target.checked)} />Snap to beats ({studio.bpm} BPM)</label></div>
     <div className="arrangement-listen-tools"><span>Solo isolates selected layers in this mix. Muted layers stay silent until you unmute them.</span>
       {studio.tracks.some((track) => track.solo) && <button type="button" disabled={studio.projectBusy} onClick={studio.clearSolos}>Clear solos</button>}</div>
+    <details className="arrangement-source-pool"><summary>Project sources · add another clip without importing again</summary><SourcePool studio={studio} /></details>
     <ArrangementSection studio={studio} snap={snap} />
     <TimeRuler studio={studio} />
     <div className="arrangement-layers">{studio.tracks.map((track) => <ArrangementRow key={track.id} track={track} studio={studio} cursor={cursor} snap={snap} />)}
       {!studio.tracks.length && <p className="arrangement-help">Add a sound in the studio to start arranging.</p>}</div>
     <ArrangementExport key={studio.activeProject?.id || 'workspace'} studio={studio} />
     {error && <p className="arrangement-error" role="alert">{error}</p>}
-    <p className="arrangement-help">One window per layer. Each layer starts its selected recording at Entry; one-shots can finish before Exit. Rhythm hits follow the shared grid inside their window.</p>
+    <p className="arrangement-help">Each row is an independent clip. Duplicate or Add clip reuses the source; Split cuts at the playhead. Overlap rows to layer audio. Each clip starts its selected recording at Entry; one-shots can finish before Exit. Rhythm hits follow the shared grid inside their window.</p>
     <p className="arrangement-help">Use Play arrangement to apply these timings, or Free mix to return to continuous mixing. Save the mix to keep timings and fades. Source recordings stay intact.</p>
   </section>;
 }

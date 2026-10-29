@@ -127,3 +127,6 @@
 .section-summary { font-size: .78rem; line-height: 1.6; color: #b0cbb9; margin: 6px 0 0; }
 .section-summary output { color: #dff8e8; font-variant-numeric: tabular-nums; }
 .arrangement-export p.export-routing { color: #eed3a7; }
+.arrangement-source-pool { margin: 16px 0; }
+.arrangement-source-pool > summary { color: var(--accent); font-size: 12px; cursor: pointer; padding: 11px 0; }
+.arrangement-source-pool .source-pool { margin-top: 8px; }

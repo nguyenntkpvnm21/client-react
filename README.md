@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 161 tests. No additional testing dependency is required.
+The automated suite has 180 tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -95,13 +95,13 @@ auditions remain separate from the shared mix transport.
 ## Studio and importing
 
 - Included recordings: Rain, Birds and Music, with search/category filters.
-- Up to eight layers, including imported files.
+- Up to eight unique source recordings and 32 independent clips. Copies share audio.
 - Up to 30 MiB per file and 15 minutes per recording, with a 1 GiB decoded-audio
   budget for the workspace. Playback decodes at 44.1 kHz, independent of the device
   sample rate. Eight four-minute stereo layers use about 646 MiB of PCM; compressed
   file sizes do not describe their playback memory usage.
 - File reads and decoding run one at a time to limit temporary memory peaks.
-  Repeated requests for a layer share its decoded audio. Under memory pressure,
+  Requests and clips using the same source share one decode and PCM buffer. Under memory pressure,
   unused decoded recordings are released while mix layers and previews stay cached.
   Source files, saved mixes, stereo channels, pitch and timing remain unchanged.
   Browser/device memory can still limit very large mixes.
@@ -211,11 +211,11 @@ steps rather than playing a backlog. Pattern playback pauses in a hidden tab.
 
 ## Arrangement timeline
 
-Arrangement length is 1–300 seconds, default 30. Each layer has one timing window.
+Arrangement length is 1–300 seconds, default 30. Each row is an independent clip with its own timing window.
 All rows share a time axis; overlapping windows play together.
 
 - Drag the middle of a clip to move it while preserving its length.
-- Drag the bottom Entry/Exit handles to resize the timing window.
+- Drag the bottom Entry/Exit handles to trim normal audio and its window. Loop trims preserve phase; trimming hatched silence does not invent more selected audio. Load the waveform first if needed.
 - Drag top handles for Fade in/out. Arrow keys work on all controls; Shift gives
   fine adjustments. Snap to beats can be switched off.
 - During dragging, a temporary draft is shown. Release validates and applies
@@ -302,8 +302,9 @@ allowed. A muted solo remains silent until unmuted. Clear solos restores the mix
 without changing mute or volume settings. Use Solo and the time ruler together
 to listen to the entrance, exit or fade you are editing.
 
-There is currently one placement per layer. Multiple clips on one track, source
-slip editing, drag duplication and effects are not added.
+Each clip currently occupies a separate row. Multiple clips inside one combined lane,
+source slip handles, drag duplication and effects are not added. Use Duplicate
+or Project sources to create another row referencing the same recording.
 
 ## Saved mixes and browser storage
 
@@ -385,6 +386,8 @@ eviction that preserves active layers and previews.
 - lib/audioSelection.js: selection geometry, detailed waveform and sound finding.
 - lib/timelineEditing.js and arrangementState.js: validated window editing/fades.
 - lib/studioState.js, savedMixes.js and audioStorage.js: serialization and storage.
+- lib/audioSources.js and clipInstances.js: shared source references and independent clip operations.
+- components/SourcePool.jsx: reusable project recordings and clip creation.
 - lib/projectBackup.js and components/ProjectTransfer.jsx: portable project format and transfer UI.
 - lib/scenes.js and components/SceneStarters.jsx: editable starter arrangements and previews.
 
@@ -392,7 +395,7 @@ eviction that preserves active layers and previews.
 
 Saved mixes remain local to one browser. In Saved mixes, **Download project**
 creates a `.naturemix` file containing the current workspace (including unsaved
-metadata changes) and the original bytes of every layer. Apply open clip or
+metadata changes) and one copy of each source recording, including unused sources. Apply open clip or
 placement drafts first. WAV export remains a finished audio render; project
 backup is the editable form. Playback position, audition loops and editor drafts
 are session state and are not included.
@@ -405,14 +408,16 @@ available before the final storage commit. Failed writes roll back the whole
 transaction. Existing projects and the current workspace remain open and
 unchanged. Open the restored entry separately when ready.
 
-Included sounds are embedded too. On restore every layer gets a fresh private
-import ID, so a future library URL/content change does not change the restored
+Included sounds are embedded too. On restore each source gets a fresh private
+import ID and its clips retain their shared reference, so a future library URL/content change does not change the restored
 sound. A restored Rain layer is therefore independent of the library Rain
 button and the base-blend shortcuts. No storage schema migration is required.
 
-The version-1 binary format uses an 8-byte `NMIXPK01` signature, a 4-byte
+The binary container uses an 8-byte `NMIXPK01` signature, a 4-byte
 big-endian JSON length, UTF-8 metadata, then concatenated original audio blobs.
-Metadata is limited to 256 KiB; audio retains the existing 8-layer and 30 MiB
+New backups have version-2 metadata with shared source references; version-1
+backups are still accepted. Older builds cannot read the new version-2 files.
+Metadata is limited to 256 KiB; audio retains the existing 8-source and 30 MiB
 per-file limits. Hashing and reads are sequential; audio is not converted to
 base64 or PCM when backing up. The file is not a ZIP, is not encrypted, and
 is intended to be opened with NatureMix. Only share a project file with people
@@ -436,20 +441,65 @@ no automatic playback or named save is triggered. Existing saved mixes keep
 their audio. Add an imported vocal/instrumental and continue with the existing
 clip, rhythm, timeline and WAV tools.
 
+## Reusing, cutting and layering recordings
+
+Project sources separates original files from the clips using them. Import a
+recording once, then use **Add clip** or **Duplicate** without another upload.
+Every clip has independent normal/rhythm ranges, level, Solo/Mute, loop setting,
+timing and fades. Editing or deleting a clip never changes its siblings. The
+source stays available after the last clip is removed. Remove source appears
+only when it is unused; saved mixes still protect their referenced originals.
+
+A practical flow is to import Vocal, Beat and FX, duplicate Vocal and Beat,
+then use Edit audio in Arrangement to choose different source ranges. Move the
+rows into overlapping windows to layer the sound. Project sources in Arrangement
+is expandable; Add clip inserts at the current playhead. Studio also exposes
+Project sources and Duplicate clip. There are up to 8 sources and 32 clips.
+
+Pause at a cut point and choose **Split at playhead** on the desired normal row.
+Both parts must have at least 0.05 s of audible audio. A one-shot split creates
+adjacent source ranges; a looping split preserves the original region and loop
+phase. Both preserve the original fade curve, including a cut inside a fade.
+Move a split clip to translate that fade segment; editing its fades establishes
+a new independent envelope. Split is disabled for rhythm patterns; patterns
+can still be duplicated and edited independently.
+
+Bottom timeline edges trim normal audio; numeric Edit timing remains a window
+placement tool. Edit audio opens the full waveform selector at that row, with
+zoom, visual selection, exact times and isolated preview. Applying an audio
+range there keeps the workspace cursor and play/pause intent. Studio's existing
+normal-clip apply behavior remains unchanged. Duplicate and split also retain
+the current cursor, with the new clip focused/scrolled into view.
+
+Mix metadata adds a source registry and sourceId on clips. Old workspace and
+saved records are normalized on read; IndexedDB remains schema 2. Imported blobs
+are stored by source ID. Deletion reclaims audio only after its final workspace
+source or saved-project reference is gone. The engine caches one PCM buffer and
+one pending decode per source, exposing clip aliases to existing playback,
+waveform, rhythm and offline-render code. Memory counts unique buffers. Removing
+one clip does not abort or free audio used by a sibling; clearing a project
+invalidates all its outstanding aliases.
+
 ## Source handoff
 
-This update is based on main `7d415a1`, including audio-memory commit `e408a3e`.
-It preserves the engine's 44.1 kHz decode rate, serialized decoding and 1 GiB
-budget. The package adds project transfer and scene starters without changing
-audio assets, dependencies, the storage schema or existing WAV rendering.
+This update is based on main `f2ca92d`, including project/scene commit `d972399`
+and its phone confirmation-focus fix. It keeps the four pages, black/neon theme,
+44.1 kHz serialized decoding, 1 GiB memory budget, scene starters, loop audition,
+WAV export and imported/saved audio. No dependency, audio asset or database
+schema changes are required.
 
-Project format tests cover metadata/audio round trips, independent rhythm
-regions, cleared patterns, routing, corruption, invalid versions/lengths/IDs,
-missing/duplicate/oversized assets, cancellation and source independence, including a removed/replaced catalog.
-Native Chromium checks cover transfer to a clean browser context without
-catalog access, decode failures, duplicate names, quota rollback, unchanged
-workspace data, scene confirmation/preview/playback and all four pages at
-320–1440 px. Safari, Firefox and physical phones are not verified here.
+Tests cover 3 sources producing 5 clips; 32 clips sharing one four-minute PCM
+allocation; isolated controls/ranges; one-shot/loop splits; inherited fades;
+trimming; pending-load cancellation; migration; source lifetime; and project v2
+round trips with one payload per source. Version-1 project files remain readable.
+Touching scaled fades retain their ramps at split/seek boundaries, including
+floating-point rounding when fade-in and fade-out meet without a plateau.
+Native Chromium checks cover actual import/duplicate/split/trim/save/reload,
+cross-profile backup/restore/play/export, source retention and saved-reference
+cleanup, 24 page/size combinations from 320–1440 px, touch controls and focus.
+Native WAV comparisons before/after splits inside fades and loops differ by at
+most one 16-bit PCM quantization level in the tested fixtures. Firefox, Safari,
+physical phones and virtual keyboards are not verified here.
 
 ## Included audio and deployment
 

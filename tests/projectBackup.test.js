@@ -25,12 +25,13 @@ test('project round trip preserves clips, independent rhythm, cleared steps, rou
     placement: { start: 8, end: 90, fadeIn: 3, fadeOut: 7 },
     rhythm: { initialized: true, sampleStart: 13, sampleEnd: 15, tailMode: 'ring' },
     sequence: { initialized: true, enabled: false, steps: Array(16).fill(false) } };
-  mix.tracks.push({ ...mix.tracks[0], id: 'custom-vocal', catalogId: null, name: 'Vocal.wav', role: 'vocal', loop: false });
+  mix.tracks.push({ ...mix.tracks[0], id: 'custom-vocal', sourceId: 'custom-vocal', catalogId: null, name: 'Vocal.wav', role: 'vocal', loop: false });
+  mix.sources.push({ id: 'custom-vocal', catalogId: null, name: 'Vocal.wav', role: 'vocal' });
   const parsed = await inspectProjectBackup(await pack(mix));
-  const withoutIdentity = (track) => ({ ...track, id: null, catalogId: null });
+  const withoutIdentity = (track) => ({ ...track, id: null, sourceId: null, catalogId: null });
   assert.deepEqual(parsed.mix.tracks.map(withoutIdentity), serializeMix(mix).tracks.map(withoutIdentity));
   assert.equal(parsed.mix.master, mix.master);assert.equal(parsed.mix.bpm, mix.bpm);assert.deepEqual(parsed.mix.arrangement, mix.arrangement);
-  for (let index = 0; index < mix.tracks.length; index += 1) assert.equal(await parsed.files.get(parsed.mix.tracks[index].id).text(), mix.tracks[index].id);
+  for (let index = 0; index < mix.tracks.length; index += 1) assert.equal(await parsed.files.get(parsed.mix.tracks[index].sourceId).text(), mix.tracks[index].id);
   let index = 0;
   const restored = restoredProject(parsed, 'Restored version', () => 'new-' + index++);
   assert.equal(restored.name, 'Restored version');assert.equal(restored.files.size, 4);
@@ -62,7 +63,7 @@ test('truncated, wrong magic, unknown version, oversized metadata and trailing d
   const wrong = new Uint8Array(await blob.arrayBuffer());wrong[0] = 0;
   const hugeHeader = new Uint8Array(await blob.slice(0, 12).arrayBuffer());new DataView(hugeHeader.buffer).setUint32(8, 300000);
   for (const bad of [new Blob([]), blob.slice(0, 9), blob.slice(0, -1), new Blob([wrong]),
-    new Blob([hugeHeader]), new Blob([blob, 'extra']), await rewrite(blob, (value) => { value.version = 2; })]) {
+    new Blob([hugeHeader]), new Blob([blob, 'extra']), await rewrite(blob, (value) => { value.version = 99; })]) {
     await assert.rejects(inspectProjectBackup(bad), /damaged or unsupported/);
   }
   assert.ok(MAX_BACKUP_BYTES < 241 * 1024 * 1024);
@@ -97,7 +98,7 @@ test('invalid mix values and unknown track ids are rejected without silently nor
 });
 
 test('empty projects can be transferred and restored without inventing audio', async () => {
-  const parsed = await inspectProjectBackup(await pack({ ...defaultMix(), tracks: [] }));
+  const parsed = await inspectProjectBackup(await pack({ ...defaultMix(), sources: [], tracks: [] }));
   const restored = restoredProject(parsed, 'Empty');
   assert.equal(restored.files.size, 0);assert.equal(restored.mix.tracks.length, 0);
 });

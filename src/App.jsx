@@ -7,6 +7,7 @@ import MixWorkspace from './components/MixWorkspace';
 import SoundLibrary from './components/SoundLibrary';
 import SavedMixes from './components/SavedMixes';
 import SceneStarters from './components/SceneStarters';
+import SourcePool from './components/SourcePool';
 import StepSequencer from './components/StepSequencer';
 import WorkspaceTransport from './components/WorkspaceTransport';
 import useStudio from './hooks/useStudio';
@@ -50,7 +51,7 @@ export default function App() {
         <Icon name={pageIcons[item.id]} size={20} /><span>{item.label}</span>{item.id === 'saved-mixes' && studio.savedMixes.length > 0 && <span className="sidebar-count">{studio.savedMixes.length}</span>}
       </a>)}</nav>
       <div className="sidebar-project"><span className="sidebar-eyebrow">CURRENT PROJECT</span><a href="#/saved-mixes" aria-label="View current project in Saved mixes"><span className="sidebar-project-art"><Icon name="music" size={21} /></span><span><strong>{studio.activeProject?.name || 'Untitled mix'}</strong><small>{studio.activeProject ? studio.dirty ? 'Unsaved changes' : 'Saved mix' : 'Save your creation'}</small></span><Icon name="arrow" size={16} /></a></div>
-      <section className="sidebar-layer-list" aria-label="Current layers"><div><h2>Your layers</h2><span>{studio.tracks.length}</span></div>
+      <section className="sidebar-layer-list" aria-label="Current layers"><div><h2>Your clips</h2><span>{studio.tracks.length}</span></div>
         {studio.tracks.length ? <ul>{studio.tracks.map((track) => <li className={track.role} key={track.id}><span className="sidebar-layer-dot" /><span title={track.name}>{track.name}</span><span className="sidebar-layer-type">{track.role}</span></li>)}</ul> : <p>Add a sound to get started.</p>}
       </section>
       <div className="sidebar-footnote"><Icon name="headphones" size={18} /><span>A space for your sound.<small>Create. Listen. Make it yours.</small></span></div>
@@ -64,7 +65,7 @@ export default function App() {
       <section className="page-heading"><div><p className="eyebrow">NATUREMIX / {page.label.toUpperCase()}</p><h1 id="page-title">{page.title}</h1><p>{page.description}</p></div><span className="page-mode"><span className="small-dot" />{studio.arrangement.enabled ? 'Arrangement' : 'Free mix'}</span></section>
       <div className="page-content">
         {page.id === 'studio' && <><SceneStarters studio={studio} /><div className="studio-page-grid"><MixWorkspace studio={studio} />
-          <aside className="studio-sidebar" aria-label="Add sounds"><SoundLibrary studio={studio} /><AudioImport studio={studio} role={role} setRole={setRole} inputRef={inputRef} chooseFiles={chooseFiles} /></aside>
+          <aside className="studio-sidebar" aria-label="Add sounds"><SoundLibrary studio={studio} /><SourcePool studio={studio} /><AudioImport studio={studio} role={role} setRole={setRole} inputRef={inputRef} chooseFiles={chooseFiles} /></aside>
         </div></>}
         {page.id === 'rhythm' && <StepSequencer studio={studio} />}
         {page.id === 'arrangement' && <Arrangement studio={studio} />}

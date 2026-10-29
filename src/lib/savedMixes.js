@@ -1,3 +1,4 @@
+import { sourceId, sourceTracks } from './audioSources.js';
 import { serializeMix, validateMix } from './studioState.js';
 
 export const MAX_SAVED_MIXES = 20;
@@ -13,7 +14,7 @@ export function mixName(value) {
 export function validateProject(value) {
   const mix = validateMix(value?.mix);
   if (value?.version !== 1 || typeof value.id !== 'string' || !value.id.startsWith('mix-') || value.id.length > 100
-    || !mix || mix.tracks.length !== value.mix.tracks.length || value.id.length <= 4
+    || !mix || mix.tracks.length !== value.mix.tracks.length || (value.mix.sources && mix.sources.length !== value.mix.sources.length) || value.id.length <= 4
     || typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string'
     || !Number.isFinite(Date.parse(value.createdAt)) || !Number.isFinite(Date.parse(value.updatedAt))) {
     throw new Error('Saved mixes contain invalid data. Their stored records have been preserved.');
@@ -50,8 +51,9 @@ export function changeProject(records, action, { id, name, mix, now = new Date()
 }
 
 export function referencedAudio(tracks, projects) {
-  return new Set([...tracks, ...projects.flatMap((project) => project.mix.tracks)]
-    .filter((track) => !track.catalogId).map((track) => track.id));
+  const workspace = Array.isArray(tracks) ? tracks : sourceTracks(tracks);
+  return new Set([...workspace, ...projects.flatMap((project) => sourceTracks(project.mix))]
+    .filter((track) => !track.catalogId).map(sourceId));
 }
 
 export function sameMix(left, right) {

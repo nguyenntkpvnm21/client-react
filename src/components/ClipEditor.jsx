@@ -46,7 +46,7 @@ function RegionControls({ track, info, studio, location }) {
       <button type="button" disabled={disabled} onClick={() => studio.applyClip(track.id, 0, info.duration, track.loop, true, location)}>{location === 'sequencer' ? 'Use full recording' : 'Reset clip'}</button>
     </div>
     {isSequenced(track) && location !== 'sequencer' && <p className="clip-help">Rhythm is enabled. Normal clip edits are heard after choosing Use normal playback in Rhythm.</p>}
-    <p className="clip-help">Preview plays this layer alone at 40% volume. Applying a range stops the mix and returns it to the beginning. The original file stays intact.</p>
+    <p className="clip-help">Preview plays this layer alone at 40% volume. {location === 'arrangement' ? 'Applying a range keeps the workspace position.' : 'Applying a range stops the mix and returns it to the beginning.'} The original file stays intact.</p>
   </div>;
 }
 
