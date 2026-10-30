@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import Arrangement from './components/Arrangement';
+import EditHistory from './components/EditHistory';
 import AudioImport from './components/AudioImport';
 import Icon from './components/Icon';
 import MixWorkspace from './components/MixWorkspace';
@@ -15,6 +16,7 @@ import { pageFromHash, STUDIO_PAGES } from './lib/studioPages.js';
 import './StudioPages.css';
 import './StudioTheme.css';
 import './BeginnerUi.css';
+import './EditHistory.css';
 
 const pageIcons = { studio: 'layers', rhythm: 'rhythm', arrangement: 'timeline', 'saved-mixes': 'library' };
 
@@ -59,7 +61,7 @@ export default function App() {
     </aside>
     <div className="studio-content-shell">
     <header className="workspace-header"><div className="workspace-breadcrumb"><Icon name={pageIcons[page.id]} size={18} /><span>Workspace</span><span aria-hidden="true">/</span><strong>{page.label}</strong></div>
-      <div className="workspace-header-actions"><span className="local-label"><span className="small-dot" />On this device</span>
+      <EditHistory studio={studio} /><div className="workspace-header-actions"><span className="local-label"><span className="small-dot" />On this device</span>
         {page.id === 'studio' ? <button type="button" className="primary-button" disabled={studio.busy} onClick={() => inputRef.current?.click()}><Icon name="plus" size={16} />Add audio</button> : <a className="primary-button" href="#/studio"><Icon name="plus" size={16} />Add audio</a>}
       </div></header>
     <main className={'app-main page-' + page.id} id="main-content" ref={mainRef} tabIndex={-1} aria-labelledby="page-title">

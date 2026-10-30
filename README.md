@@ -529,6 +529,28 @@ waveform, rhythm and offline-render code. Memory counts unique buffers. Removing
 one clip does not abort or free audio used by a sibling; clearing a project
 invalidates all its outstanding aliases.
 
+## Edit history and selection
+
+Undo/Redo in the shared header is available on all four pages. Ctrl/Command+Z
+undoes; Ctrl/Command+Shift+Z or Ctrl+Y redoes. Text inputs keep their native undo.
+One drag/held-key adjustment of a level slider is one action; timeline drags
+already apply on release. Add drum beat creates one action for all three rows.
+Split, trim, duplicate, source/clip deletion, sample selection, step edits, speed
+and level changes are reversible. Editing after Undo clears Redo.
+
+History retains at most 50 metadata snapshots and source IDs, never PCM buffers
+or copies of original recordings. Removed audio remains protected while Undo or
+Redo can reach it. Opening a saved mix, starting a scene or reloading starts a
+fresh history; save/rename/delete of saved-library entries are not undoable.
+Restoring an edit closes an unapplied editor draft and preserves the current
+workspace cursor and play/pause intent where the restored duration permits.
+The Free mix/Arrangement listening mode and temporary section loop are not edit
+history. Saving a mix still needs Save changes after an undone/redone edit.
+
+The selected clip has a lime outline and a header label. Selection is separate
+from the cyan sample range and the listening cursor. Isolated sample/rhythm
+previews are identified in the shared player with a stop button.
+
 ## Source handoff
 
 This update is based on main `f2ca92d`, including project/scene commit `d972399`

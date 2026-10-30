@@ -67,12 +67,13 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp'].includes(event.key)) return;
     event.preventDefault();
     const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1;
+    studio.beginEditGesture('placement:' + track.id);
     commit(editTimelineWindow(window, action, direction * (event.shiftKey ? .01 : snap ? 60 / studio.bpm : .1), duration, event.shiftKey ? 0 : snap ? 60 / studio.bpm : 0), action);
   }
   const handles = [['start', 'entry', current.start, current.start, 0, current.end - .05], ['end', 'exit', current.end, current.end, current.start + .05, duration],
     ['fadeIn', 'fade in', current.start + current.fadeIn, current.fadeIn, 0, length - current.fadeOut], ['fadeOut', 'fade out', current.end - current.fadeOut, current.fadeOut, 0, length - current.fadeIn]];
   return <div className="timeline-clip-wrap">
-    <div className="arrangement-lane timeline-edit-lane" role="group" aria-label={track.name + ' timeline'} onPointerDown={begin} onPointerMove={drag} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={() => { gesture.current = null; setDraft(null); }}>
+    <div className="arrangement-lane timeline-edit-lane" role="group" aria-label={track.name + ' timeline'} onKeyUp={() => studio.endEditGesture('placement:' + track.id)} onBlur={() => studio.endEditGesture('placement:' + track.id)} onPointerDown={begin} onPointerMove={drag} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={() => { gesture.current = null; setDraft(null); }}>
       <div className="timeline-clip" style={{ left: position(current.start) + '%', width: position(length) + '%' }}>
         <div className="timeline-source" style={{ width: audible / length * 100 + '%' }} />
         <svg className="timeline-wave" viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true"><path d={path} /></svg>

@@ -1,3 +1,4 @@
+import { historyGesture } from '../lib/historyGesture.js';
 import ClipEditor from './ClipEditor';
 import SourcePool from './SourcePool';
 import ArrangementSection from './ArrangementSection';
@@ -63,7 +64,7 @@ function ArrangementRow({ track, studio, cursor, snap }) {
   const [loading, setLoading] = useState(false);
   const active = studio.arrangement.enabled && studio.status === 'playing' && studio.elapsed >= window.start && studio.elapsed < window.end;
   function done() { setEditing(false); editButton.current?.focus(); }
-  return <article data-clip-id={track.id} className={'arrangement-row ' + track.role + (active ? ' is-active' : '')} aria-label={track.name + ' arrangement'}>
+  return <article data-clip-id={track.id} className={'arrangement-row ' + track.role + (active ? ' is-active' : '') + (studio.selectedClipId === track.id ? ' is-selected' : '')} aria-label={track.name + ' arrangement'} onPointerDown={() => studio.selectClip(track.id)} onFocusCapture={() => studio.selectClip(track.id)}>
     <div className="arrangement-row-heading"><div><h3 title={track.name}>{track.name}</h3><span>{isSequenced(track) ? 'Rhythm pattern' : track.loop ? 'Looping layer' : 'One-shot layer'}</span></div>
       <div className="arrangement-row-controls">
         <button type="button" aria-label={'Solo ' + track.name + ' in arrangement'} aria-pressed={track.solo} disabled={studio.projectBusy} onClick={() => studio.updateTrack(track.id, { solo: !track.solo })}>Solo</button>
@@ -78,7 +79,7 @@ function ArrangementRow({ track, studio, cursor, snap }) {
       <button type="button" disabled={studio.busy} aria-label={'Duplicate ' + track.name} onClick={() => studio.duplicateClip(track.id)}>Duplicate</button>
       <button type="button" disabled={studio.busy || !studio.arrangement.enabled || isSequenced(track)} title={isSequenced(track) ? 'Switch to normal playback to split audio' : 'Set the playhead inside this clip, then split'} aria-label={'Split ' + track.name + ' at playhead'} onClick={() => studio.splitClip(track.id)}>Split at playhead</button>
       <button type="button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'arrangement'} aria-label={'Edit audio for ' + track.name} onClick={() => studio.editorId === track.id && studio.editorLocation === 'arrangement' ? studio.closeClip() : studio.openClip(track.id, 'arrangement')}>Edit audio</button>
-      <label>Level<input type="range" min="0" max="100" value={track.volume} aria-label={track.name + ' arrangement volume'} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
+      <label>Level<input {...historyGesture(studio, 'level:' + track.id)} type="range" min="0" max="100" value={track.volume} aria-label={track.name + ' arrangement volume'} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
       <details className="clip-more"><summary>More</summary><p className="clip-instance-source">Source: {studio.sources.find((source) => source.id === (track.sourceId || track.id))?.name || track.name}</p><button type="button" disabled={studio.busy} aria-label={'Remove clip ' + track.name} onClick={() => studio.removeTrack(track.id)}>Remove clip</button></details>
     </div>
     {studio.editorId === track.id && studio.editorLocation === 'arrangement' && <ClipEditor track={track} info={studio.details[track.id]} studio={studio} location="arrangement" />}

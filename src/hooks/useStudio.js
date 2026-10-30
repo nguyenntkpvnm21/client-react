@@ -1,3 +1,4 @@
+import { MixHistory } from '../lib/mixHistory.js';
 import { clipName, ensureClipSlot, sourceId } from '../lib/audioSources.js';
 import { DRUMS, drumKit, drumTrack } from '../lib/drumStarter.js';
 import { duplicateClip, placedClip, splitClip, trimmedClip } from '../lib/clipInstances.js';
@@ -29,7 +30,11 @@ function withSources(tracks) {
 }
 
 export default function useStudio() {
-  const [mix, setMix] = useState(initialMix);
+  const [mix, setMixState] = useState(initialMix);
+  const history = useRef(new MixHistory());
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [selectedClipId, setSelectedClipId] = useState(null);
+  const selectedRef = useRef(null);
   const [loopSection, setLoopSectionState] = useState(() => initialLoopRegion(arrangementMetadata(mix.arrangement).duration));
   const loopRef = useRef(loopSection);
   const [exportState, setExportState] = useState(null);
@@ -56,7 +61,7 @@ export default function useStudio() {
   const [preview, setPreview] = useState(null);
   const engine = useRef(null);
   const files = useRef({});
-  const mixRef = useRef(null);
+  const mixRef = useRef(mix);
   const alive = useRef(false);
   const importLock = useRef(false);
   const projectLock = useRef(false);
@@ -98,7 +103,7 @@ export default function useStudio() {
         else { missing = true; blocked ||= result.status === 'rejected'; }
       });
       files.current = found;
-      setMix({ ...restored, sources: restored.sources.filter((source) => source.catalogId || found[source.id]), tracks: restored.tracks.filter((track) => track.catalogId || found[sourceId(track)]) });
+      setMixState({ ...restored, sources: restored.sources.filter((source) => source.catalogId || found[source.id]), tracks: restored.tracks.filter((track) => track.catalogId || found[sourceId(track)]) });
       setStorageBlocked(blocked);
       if (missing) setStorageNotice(blocked
         ? 'Saved audio could not be opened. Your saved workspace has been preserved; try reloading with browser storage enabled.'
@@ -166,20 +171,84 @@ export default function useStudio() {
     persistWorkspace(mix, activeProjectId);
   }, [mix, activeProjectId, booting, storageBlocked]);
 
-  function changeMix(next) {
-    mixRef.current = next;
-    setMix(next);
+  function selectClip(id) {
+    const selected = mixRef.current.tracks.some(track => track.id === id) ? id : null;
+    selectedRef.current = selected;setSelectedClipId(selected);
   }
 
-  // If the persisted workspace cannot be read, retain files rather than risk deleting a reference.
-  async function reclaim(ids, next) {
+  function setMix(update, label = 'Edit mix', key, record = true) {
+    const previous = mixRef.current;
+    const next = typeof update === 'function' ? update(previous) : update;
+    if (next === previous) return;
+    if (record && history.current.record(previous, next, { label, key, selectedId: selectedRef.current })) setHistoryVersion(value => value + 1);
+    mixRef.current = next;setMixState(next);
+    if (!next.tracks.some(track => track.id === selectedRef.current)) { selectedRef.current = null;setSelectedClipId(null); }
+  }
+
+  function changeMix(next, label = 'Edit mix', key, record = true) { setMix(next, label, key, record); }
+
+  function clearHistory() { history.current.clear();setHistoryVersion(value => value + 1);selectedRef.current = null;setSelectedClipId(null); }
+  function beginEditGesture(key) { history.current.begin(key); }
+  function endEditGesture(key) { history.current.end(key); }
+
+  // History protects originals even after an unused source is removed from the workspace.
+  const reclaim = useCallback(async (ids, next) => {
     if (storageBlocked || projectsBlocked) return;
     let stored;
     try { stored = validateMix(JSON.parse(localStorage.getItem(STUDIO_STORAGE_KEY))); } catch { return; }
     if (!stored) return;
-    try { await deleteUnusedAudio(ids, { sources: [...next.sources, ...stored.sources], tracks: [...next.tracks, ...stored.tracks] }); }
-    catch { if (alive.current) setStorageNotice('Unused audio could not be cleaned up. Your remaining recordings have been kept.'); }
+    const retainedIds = history.current.audioIds();
+    const retained = [...next.sources, ...stored.sources, ...[...retainedIds].map(id => ({ id, catalogId: null }))];
+    try {
+      await deleteUnusedAudio(ids, { sources: retained, tracks: [] });
+      const live = new Set([...referencedAudio(mixRef.current, []), ...history.current.audioIds()]);
+      for (const id of ids) if (!live.has(id)) delete files.current[id];
+    } catch { if (alive.current) setStorageNotice('Unused audio could not be cleaned up. Your remaining recordings have been kept.'); }
+  }, [storageBlocked, projectsBlocked]);
+
+  useEffect(() => {
+    if (!booting && historyVersion) void reclaim(Object.keys(files.current), mixRef.current);
+  }, [historyVersion, booting, reclaim]);
+
+  async function restoreEdit(direction) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    const entry = history.current.peek(direction);
+    if (!entry) return false;
+    projectLock.current = true;setProjectBusy(true);
+    try {
+      const found = {};
+      for (const source of entry.mix.sources.filter(source => !source.catalogId)) {
+        const file = files.current[source.id] || await readAudio(source.id);
+        if (!(file instanceof Blob)) throw new Error('The original audio is unavailable. Your current mix has been kept.');
+        found[source.id] = file;
+      }
+      if (!alive.current) return false;
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      closeClip();seekIntent.current = null;
+      const restored = history.current.apply(direction, mixRef.current, selectedRef.current);
+      const next = validateMix(restored.mix);
+      Object.assign(files.current, found);
+      if (loopRef.current.end > next.arrangement.duration) resetLoop(next.arrangement.duration);
+      changeMix(next, undefined, undefined, false);selectClip(restored.selectedId);setHistoryVersion(value => value + 1);
+      try { await rescheduleMix(next, Math.min(position, next.arrangement.enabled ? next.arrangement.duration : Infinity), resume); }
+      catch (error) { setNotice('Edit restored. Playback paused: ' + error.message);return true; }
+      setElapsed(engine.current.position());setNotice((direction === 'undo' ? 'Undid ' : 'Redid ') + restored.label + '.');
+      return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
   }
+
+  useEffect(() => {
+    function key(event) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.defaultPrevented || (event.target.closest('input, textarea, select, [contenteditable="true"]') && !event.target.matches('input[data-history-range]'))) return;
+      const command = event.key.toLowerCase();
+      if (command !== 'z' && command !== 'y') return;
+      event.preventDefault();
+      void restoreEdit(command === 'y' || event.shiftKey ? 'redo' : 'undo');
+    }
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  });
 
   function updateTrack(id, changes) {
     if (projectLock.current) return;
@@ -188,12 +257,12 @@ export default function useStudio() {
       engine.current.restart();
       setElapsed(0);
     }
-    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, ...changes } : track) }));
+    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, ...changes } : track) }), (changes.volume !== undefined ? 'Level' : changes.placement ? 'Move or trim' : changes.muted !== undefined ? 'Mute' : changes.solo !== undefined ? 'Solo' : 'Edit') + ' ' + (current?.name || 'clip'), changes.volume !== undefined ? 'level:' + id : changes.placement ? 'placement:' + id : undefined);
   }
 
   function setMaster(master) {
     scenePlayer.current?.setMaster(master);
-    if (!projectLock.current) setMix((previous) => ({ ...previous, master }));
+    if (!projectLock.current) setMix((previous) => ({ ...previous, master }), 'Master level', 'master');
   }
 
   async function togglePlayback() {
@@ -230,13 +299,13 @@ export default function useStudio() {
       catch (error) { if (alive.current) setNotice(error.message); return; }
     }
     if (alive.current && !projectLock.current) setMix((previous) => previous.tracks.some((item) => item.id === track.id) || previous.sources.length >= MAX_TRACKS || previous.tracks.length >= MAX_CLIPS
-      ? previous : { ...previous, sources: [...previous.sources, { id: sound.id, catalogId: sound.id, name: sound.name, role: sound.role }], tracks: [...previous.tracks, { ...track, sourceId: sound.id }] });
+      ? previous : { ...previous, sources: [...previous.sources, { id: sound.id, catalogId: sound.id, name: sound.name, role: sound.role }], tracks: [...previous.tracks, { ...track, sourceId: sound.id }] }, 'Add library sound');
   }
 
   async function importFiles(selected, role) {
     if (importLock.current || projectLock.current || !selected.length) return;
     stopScene();
-    importLock.current = true;
+    importLock.current = true;beginEditGesture('import');
     setImporting(true);
     setNotice('');
     const player = engine.current;
@@ -256,7 +325,7 @@ export default function useStudio() {
           catch { if (alive.current) setStorageNotice('An imported sound could not be saved. It is available in this tab; keep the original file to import again.'); }
           if (!alive.current || player.disposed) return;
           files.current[sourceId(track)] = file;
-          setMix((previous) => ({ ...previous, sources: [...previous.sources, { id, catalogId: null, name: file.name, role }], tracks: [...previous.tracks, { ...track, sourceId: id }] }));
+          setMix((previous) => ({ ...previous, sources: [...previous.sources, { id, catalogId: null, name: file.name, role }], tracks: [...previous.tracks, { ...track, sourceId: id }] }), 'Import audio', 'import');
           imported += 1;
           slots -= 1;
         } catch (error) {
@@ -266,7 +335,7 @@ export default function useStudio() {
       }
       if (alive.current) setNotice(errors.length ? errors.join(' ') : imported + (imported === 1 ? ' sound added to your mix.' : ' sounds added to your mix.'));
     } finally {
-      importLock.current = false;
+      importLock.current = false;endEditGesture('import');
       if (alive.current) setImporting(false);
     }
   }
@@ -279,7 +348,7 @@ export default function useStudio() {
       if (editorId === id) setEditorId(null);
       engine.current.forget(id);
       const next = { ...mixRef.current, tracks: mixRef.current.tracks.filter((track) => track.id !== id) };
-      changeMix(next);
+      changeMix(next, 'Remove clip');
       setDetails((previous) => { const copy = { ...previous }; delete copy[id]; return copy; });
       if (!storageBlocked) persistWorkspace(next, activeProjectId);
     } finally {
@@ -296,6 +365,7 @@ export default function useStudio() {
   }
 
   function focusClip(id) {
+    selectClip(id);
     requestAnimationFrame(() => {
       const row = document.querySelector('[data-clip-id="' + CSS.escape(id) + '"]');
       row?.scrollIntoView({ block: 'center' });row?.querySelector('button')?.focus({ preventScroll: true });
@@ -303,6 +373,7 @@ export default function useStudio() {
   }
 
   function focusRhythm(id) {
+    selectClip(id);
     requestAnimationFrame(() => {
       const row = document.querySelector('[data-rhythm-id="' + CSS.escape(id) + '"]');
       row?.scrollIntoView({ block: 'center' });row?.querySelector('.sequence-steps button')?.focus({ preventScroll: true });
@@ -322,7 +393,7 @@ export default function useStudio() {
         placement: { start: current.arrangement.enabled && elapsed < current.arrangement.duration - .05 ? elapsed : 0, end: null, fadeIn: 0, fadeOut: 0 } };
       await engine.current.load(withSources([track])[0], files.current[id]);
       if (!alive.current) return;
-      changeMix({ ...current, tracks: [...current.tracks, track] });focusClip(track.id);
+      changeMix({ ...current, tracks: [...current.tracks, track] }, 'Add clip');focusClip(track.id);
       setNotice('Added a new clip from ' + source.name + '. Its audio is shared; edits are independent.');
     } catch (error) { if (alive.current) setNotice(error.message); }
     finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
@@ -336,7 +407,7 @@ export default function useStudio() {
     try {
       const next = { ...current, sources: current.sources.filter((source) => source.id !== id) };
       for (const [clipId, key] of engine.current.sourceKeys) if (key === id) engine.current.forget(clipId);
-      delete files.current[id];changeMix(next);
+      changeMix(next, 'Remove source');
       if (!storageBlocked && persistWorkspace(next, activeProjectId)) await reclaim([id], next);
     } finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
   }
@@ -356,7 +427,7 @@ export default function useStudio() {
         : duplicateClip(current, id, 'custom-clip-' + crypto.randomUUID());
       // Resume/seek against a fresh node schedule; keep the cursor and play/pause intent.
       const position = player.position(), resume = statusRef.current === 'playing';
-      changeMix(next);
+      changeMix(next, action === 'split' ? 'Split clip' : 'Duplicate clip');
       await rescheduleMix(next, position, resume);
       setElapsed(player.position());
       const newClip = next.tracks.find((item) => !current.tracks.some((old) => old.id === item.id));
@@ -378,7 +449,7 @@ export default function useStudio() {
         closeClip();
         const loaded = await readSavedMix(data.id);
         if (!alive.current || player.disposed) return false;
-        const oldIds = [...referencedAudio(mixRef.current, [])];
+        const oldIds = [...new Set([...referencedAudio(mixRef.current, []), ...history.current.audioIds()])];
         resetLoop(arrangementMetadata(loaded.project.mix.arrangement).duration);
         player.restart();
         player.clearAudio();
@@ -387,7 +458,7 @@ export default function useStudio() {
         setNotice('');
         files.current = loaded.files;
         const next = validateMix(loaded.project.mix);
-        changeMix(next);
+        clearHistory();changeMix(next, undefined, undefined, false);
         setActiveProjectId(loaded.project.id);
         setStorageBlocked(false);
         setSavedNotice('Opened “' + loaded.project.name + '”. Press Play to listen.');
@@ -424,7 +495,7 @@ export default function useStudio() {
     if (!track) return;
     if (engine.current.previewPosition()?.loading) stopPreview();
     setMix((previous) => ({ ...previous, tracks: previous.tracks.map((item) => item.id === id
-      ? { ...item, rhythm: { ...rhythmMetadata(item), initialized: true }, sequence: change(sequenceMetadata(item)) } : item) }));
+      ? { ...item, rhythm: { ...rhythmMetadata(item), initialized: true }, sequence: change(sequenceMetadata(item)) } : item) }), 'Edit rhythm ' + track.name);
     setNotice('');
   }
 
@@ -433,7 +504,7 @@ export default function useStudio() {
     const bpm = validBpm(value);
     if (bpm === (mixRef.current.bpm ?? DEFAULT_BPM)) return;
     stopPreview();
-    setMix((previous) => ({ ...previous, bpm }));
+    setMix((previous) => ({ ...previous, bpm }), 'Change speed');
     setNotice('');
   }
 
@@ -456,7 +527,7 @@ export default function useStudio() {
         ...enableRhythmTrack(prepared, buffer.duration),
         solo: first && mixRef.current.tracks.some((layer) => layer.solo) ? true : item.solo,
       } : item) };
-      changeMix(next);
+      changeMix(next, 'Enable rhythm');
       engine.current.setTracks(withSources(next.tracks));
       if (first && !engine.current.playing) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
       if (!next.master) setNotice('Your rhythm is ready. Raise Master volume to hear it.');
@@ -490,7 +561,7 @@ export default function useStudio() {
       // Three editable clips share one recording, one persisted WAV and one decoded buffer.
       files.current[source.id] = file;
       const next = { ...mixRef.current, sources: [...mixRef.current.sources, source], tracks: [...mixRef.current.tracks, ...added] };
-      changeMix(next); committed = true; focusRhythm(added[0].id);
+      changeMix(next, 'Add drum beat'); committed = true; focusRhythm(added[0].id);
       const position = engine.current.position();
       await rescheduleMix(next, next.arrangement.enabled && position >= next.arrangement.duration ? 0 : position, true);
       setNotice('Drum beat added. Tap lit steps to remove hits, or dark steps to add them. Existing clips are kept.' + (!next.master ? ' Raise Master to hear it.' : ''));
@@ -517,13 +588,13 @@ export default function useStudio() {
   function resetLevels() {
     if (projectLock.current) return;
     setMix((previous) => ({ ...previous, master: 75, tracks: previous.tracks.map((track) => ({ ...track,
-      volume: SOUNDS.find((sound) => sound.id === track.catalogId)?.volume ?? 50, muted: false, solo: false })) }));
+      volume: SOUNDS.find((sound) => sound.id === track.catalogId)?.volume ?? 50, muted: false, solo: false })) }), 'Reset levels');
   }
 
   function applyBlend(volumes) {
     if (projectLock.current) return;
     setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.catalogId
-      ? { ...track, volume: volumes[track.catalogId], muted: volumes[track.catalogId] === 0, solo: false } : track) }));
+      ? { ...track, volume: volumes[track.catalogId], muted: volumes[track.catalogId] === 0, solo: false } : track) }), 'Apply base blend');
   }
 
   function stopPreview() {
@@ -539,7 +610,7 @@ export default function useStudio() {
 
   async function openClip(id, location = 'mixer') {
     if (projectLock.current || importLock.current || booting) return;
-    stopPreview();
+    stopPreview();selectClip(id);
     setEditorId(id);
     setEditorLocation(location);
     setNotice('');
@@ -566,7 +637,7 @@ export default function useStudio() {
     if (location === 'arrangement') {
       const current = mixRef.current, position = engine.current.position(), resume = statusRef.current === 'playing';
       const next = { ...current, tracks: current.tracks.map((track) => track.id === id ? { ...track, ...(reset ? { clipStart: 0, clipEnd: null } : region), loop, sourceOffset: undefined, gainEnvelope: undefined } : track) };
-      closeClip();changeMix(next);
+      closeClip();changeMix(next, 'Choose audio range');
       try { await rescheduleMix(next, position, resume); }
       catch (error) { if (alive.current) setNotice(error.message); }
       return;
@@ -578,7 +649,7 @@ export default function useStudio() {
         const edited = { ...track, rhythm: { ...rhythmMetadata(track), sampleStart: region.clipStart, sampleEnd: region.clipEnd } };
         return rhythmMetadata(track).initialized ? edited : { ...enableRhythmTrack(edited, duration), solo: track.solo || current.tracks.some((item) => item.solo) };
       }) };
-      closeClip(); changeMix(next); focusRhythm(id);
+      closeClip(); changeMix(next, 'Choose rhythm sample'); focusRhythm(id);
       try { await rescheduleMix(next, position, resume); }
       catch (error) { if (alive.current) setNotice(error.message); return; }
       setNotice('Sample ready. Hear rhythm previews this row; Play full mix includes your other clips.');
@@ -599,7 +670,7 @@ export default function useStudio() {
     engine.current.restart();
     setElapsed(0);
     setCurrentStep(null);
-    setMix((previous) => ({ ...previous, arrangement: { ...arrangementMetadata(previous.arrangement), duration } }));
+    setMix((previous) => ({ ...previous, arrangement: { ...arrangementMetadata(previous.arrangement), duration } }), 'Change arrangement length');
     setNotice('Arrangement length updated. Press Play arrangement to listen from the beginning.');
     return true;
   }
@@ -633,7 +704,7 @@ export default function useStudio() {
     const duration = validateLength(config.duration, mixRef.current.tracks);
     const next = { ...mixRef.current, arrangement: { enabled: true, duration } };
     engine.current.restart();
-    changeMix(next);
+    changeMix(next, undefined, undefined, false);
     setNotice('');
     try { await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement); }
     catch (error) { if (alive.current) setNotice(error.message); }
@@ -649,7 +720,7 @@ export default function useStudio() {
       engine.current.setArrangement(next.arrangement);
       if (loopRef.current.enabled && (value < loopRef.current.start || value >= loopRef.current.end)) storeLoop({ ...loopRef.current, enabled: false });
       const position = engine.current.seek(value);
-      changeMix(next);
+      changeMix(next, undefined, undefined, false);
       setElapsed(position);setCurrentStep(null);setPreview(null);setNotice('');
       if (play && position < duration) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
     } catch (error) { if (alive.current) setNotice(error.message); }
@@ -705,7 +776,7 @@ export default function useStudio() {
       const wasLoop = loopRef.current.enabled;
       engine.current.pause();engine.current.setArrangement(next.arrangement);storeLoop(region);
       if (!wasLoop || engine.current.position() < region.start || engine.current.position() >= region.end) engine.current.seek(region.start);
-      changeMix(next);setPreview(null);setNotice('');
+      changeMix(next, undefined, undefined, false);setPreview(null);setNotice('');
       await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
     } catch (error) { if (alive.current) setNotice(error.message); }
   }
@@ -758,7 +829,7 @@ export default function useStudio() {
 
   function clearSolos() {
     if (projectLock.current) return;
-    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => ({ ...track, solo: false })) }));
+    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => ({ ...track, solo: false })) }), 'Clear solos');
   }
 
   function freeMix() {
@@ -767,7 +838,7 @@ export default function useStudio() {
     engine.current.restart();
     setElapsed(0);
     setCurrentStep(null);
-    setMix((previous) => ({ ...previous, arrangement: { ...arrangementMetadata(previous.arrangement), enabled: false } }));
+    setMix((previous) => ({ ...previous, arrangement: { ...arrangementMetadata(previous.arrangement), enabled: false } }), undefined, undefined, false);
     setNotice('Free mix restored. Your layer timings have been kept for the arrangement.');
   }
 
@@ -790,7 +861,7 @@ export default function useStudio() {
   function setTailMode(id, tailMode) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
     stopPreview();
-    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, rhythm: { ...rhythmMetadata(track), tailMode } } : track) }));
+    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, rhythm: { ...rhythmMetadata(track), tailMode } } : track) }), 'Change sample tails');
   }
 
   function stopScene() {
@@ -829,11 +900,11 @@ export default function useStudio() {
     projectLock.current = true;setProjectBusy(true);
     try {
       const next = validateMix(sceneMix(id));
-      const oldIds = [...referencedAudio(mixRef.current, [])];
+      const oldIds = [...new Set([...referencedAudio(mixRef.current, []), ...history.current.audioIds()])];
       closeClip();engine.current.restart();
       engine.current.clearAudio();
       resetLoop(next.arrangement.duration);setElapsed(0);setDetails({});files.current = {};
-      changeMix(next);setActiveProjectId(null);setStorageBlocked(false);
+      clearHistory();changeMix(next, undefined, undefined, false);setActiveProjectId(null);setStorageBlocked(false);
       setNotice('Started ' + SCENES.find((scene) => scene.id === id).name + '. Press Play, or open Arrangement to shape its layers.');
       if (persistWorkspace(next, null)) await reclaim(oldIds, next);
       return true;
@@ -924,7 +995,7 @@ export default function useStudio() {
 
   const activeProject = savedMixes.find((project) => project.id === activeProjectId);
   const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
-  return { ...mix, seekPlayback, loopSection, setLoopSection, playLoop, disableLoop, exportState, exportArrangement, cancelExport, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
+  return { ...mix, historyStatus: history.current.status(), undo: () => restoreEdit('undo'), redo: () => restoreEdit('redo'), beginEditGesture, endEditGesture, selectedClipId, selectClip, seekPlayback, loopSection, setLoopSection, playLoop, disableLoop, exportState, exportArrangement, cancelExport, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
     savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
     transfer, restoreInfo, discardProjectFile, cancelTransfer, downloadProject: () => transferAction('backup'),
     inspectProjectFile: (file) => transferAction('inspect', file), restoreProject: (name) => transferAction('restore', name),

@@ -1,3 +1,4 @@
+import { historyGesture } from '../lib/historyGesture.js';
 import { patternSummary, rhythmMetadata } from '../lib/rhythmState.js';
 import { placementMetadata } from '../lib/arrangementState.js';
 import { clockTime } from '../lib/timeFormat.js';
@@ -57,7 +58,7 @@ function SequenceRow({ track, studio }) {
     event.preventDefault();
     buttons.current[target]?.focus();
   }
-  return <article data-rhythm-id={track.id} className={'sequence-row ' + track.role + (sequence.enabled ? ' is-enabled' : '')} aria-label={track.name + ' rhythm'}>
+  return <article data-rhythm-id={track.id} className={'sequence-row ' + track.role + (sequence.enabled ? ' is-enabled' : '') + (studio.selectedClipId === track.id ? ' is-selected' : '')} aria-label={track.name + ' rhythm'} onPointerDown={() => studio.selectClip(track.id)} onFocusCapture={() => studio.selectClip(track.id)}>
     <div className="sequence-row-heading">
       <div className="sequence-sound"><span className="sequence-sound-icon"><Icon name={track.role === 'nature' ? 'leaf' : track.role} size={20} /></span>
         <div><h3 title={track.name}>{track.name}</h3><p>{sequence.enabled ? 'Rhythm' : 'Normal playback'}
@@ -96,7 +97,7 @@ function SequenceRow({ track, studio }) {
         <Icon name={patternPreview ? 'pause' : 'play'} size={16} />{patternPreview ? (studio.preview.loading ? 'Cancel preview' : 'Stop preview') : 'Hear rhythm'}</button>
         <span>{patternPreview ? (studio.preview.loading ? 'Loading sample…' : studio.preview.step === null ? 'Listening to tails…' : 'Hearing this row · step ' + (studio.preview.step + 1))
           : count ? count + (count === 1 ? ' hit per loop' : ' hits per loop') : 'No hits yet. Tap a step to add one.'}</span>
-        <label className="rhythm-level">Level <input type="range" min="0" max="100" value={track.volume} aria-label={track.name + ' rhythm level'} disabled={studio.busy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /></label>
+        <label className="rhythm-level">Level <input {...historyGesture(studio, 'level:' + track.id)} type="range" min="0" max="100" value={track.volume} aria-label={track.name + ' rhythm level'} disabled={studio.busy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /></label>
         <button type="button" disabled={studio.busy} aria-pressed={track.muted} aria-label={'Mute ' + track.name + ' rhythm'} onClick={() => studio.updateTrack(track.id, { muted: !track.muted })}>Mute</button>
       </div>
       <details className="rhythm-options"><summary>Pattern options{summary?.cut ? ' · sample tails are cut' : summary?.crowded ? ' · many overlapping tails' : ''}</summary>

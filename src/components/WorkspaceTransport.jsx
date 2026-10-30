@@ -1,3 +1,4 @@
+import { historyGesture } from '../lib/historyGesture.js';
 import { useEffect, useRef } from 'react';
 import { isSequenced, sequenceMetadata } from '../lib/sequencerState.js';
 import Icon from './Icon';
@@ -31,11 +32,12 @@ export default function WorkspaceTransport({ studio }) {
         <button type="button" className="restart-button" aria-label="Restart mix" title="Restart mix" disabled={studio.busy || !studio.tracks.length} onClick={studio.restartPlayback}><Icon name="reset" size={19} /></button>
         <button type="button" className="seek-skip" aria-label="Back 5 seconds" title="Back 5 seconds" disabled={studio.booting || studio.projectBusy || studio.importing || !studio.tracks.length} onClick={() => studio.seekPlayback(Math.max(0, studio.elapsed - 5))}>−5s</button>
         <button type="button" className="seek-skip" aria-label="Forward 5 seconds" title="Forward 5 seconds" disabled={studio.booting || studio.projectBusy || studio.importing || !studio.tracks.length} onClick={() => studio.seekPlayback(studio.elapsed + 5)}>+5s</button></div>
-      <label className="master-level"><Icon name="volume" size={19} /><span>Master</span><input type="range" min="0" max="100" value={studio.master} style={{ '--level': studio.master + '%' }}
+      <label className="master-level"><Icon name="volume" size={19} /><span>Master</span><input {...historyGesture(studio, 'master')} type="range" min="0" max="100" value={studio.master} style={{ '--level': studio.master + '%' }}
         onChange={(event) => studio.setMaster(Number(event.target.value))} disabled={studio.projectBusy} aria-label="Master volume" /><output>{studio.master}%</output></label>
       <span className="workspace-playback-status" role="status"><span className={'status-dot ' + (studio.status === 'playing' ? 'is-playing' : '')} />{status}</span>
       <PlaybackSeek studio={studio} />
     </div>
+    {studio.preview && <div className="workspace-isolated-preview"><span role="status">{studio.preview.kind === 'pattern' ? 'Rhythm preview' : 'Sample preview'} · {studio.tracks.find(track => track.id === studio.preview.id)?.name || 'Selected audio'} · workspace paused</span><button type="button" onClick={studio.stopPreview}>Stop isolated preview</button></div>}
     {studio.scenePreview && <div className="workspace-scene-preview"><span role="status">{studio.scenePreview.status === 'loading' ? 'Loading scene preview' : 'Playing scene preview'} · workspace paused</span><button type="button" onClick={studio.stopScene}>Stop scene preview</button></div>}
     {studio.exportState?.active && <div className="workspace-export-progress"><span role="status">{studio.exportState.stage}</span><progress aria-label="Workspace export progress" max="1" value={studio.exportState.progress} /><button type="button" disabled={studio.exportState.canceling} onClick={studio.cancelExport}>{studio.exportState.canceling ? 'Canceling…' : 'Cancel export'}</button></div>}
     {studio.notice && <p className="workspace-notice" role="status">{studio.notice}</p>}
