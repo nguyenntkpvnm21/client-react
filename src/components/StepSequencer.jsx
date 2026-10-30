@@ -7,6 +7,7 @@ import { MAX_CLIPS, MAX_TRACKS } from '../data/sounds.js';
 import { useEffect, useRef, useState } from 'react';
 import { MAX_BPM, MIN_BPM, sequenceMetadata, stepSeconds, STEP_COUNT } from '../lib/sequencerState.js';
 import ClipEditor from './ClipEditor';
+import PatternBank from './PatternBank';
 import Icon from './Icon';
 import './StepSequencer.css';
 
@@ -28,7 +29,7 @@ function TempoInput({ studio }) {
     <div><input id="pattern-bpm" type="number" min={MIN_BPM} max={MAX_BPM} step="1" value={draft} disabled={studio.busy}
       aria-invalid={!!error} aria-describedby={error ? 'tempo-error' : 'tempo-hint'} onChange={(event) => { setDraft(event.target.value); setError(''); }} />
       <button type="submit" disabled={studio.busy}>Set speed</button></div>
-    {error ? <p id="tempo-error" className="tempo-error" role="alert">{error}</p> : <p id="tempo-hint">40–240 · higher is faster</p>}
+    {error ? <p id="tempo-error" className="tempo-error" role="alert">{error}</p> : <p id="tempo-hint">{studio.tracks.some(track => track.patternBlock) ? 'Placed sections follow bars; changing speed pauses playback. Audio clips keep their times.' : '40–240 · higher is faster'}</p>}
   </form>;
 }
 
@@ -65,18 +66,18 @@ function SequenceRow({ track, studio }) {
           {rhythm.sampleEnd != null ? ' · ' + clockTime(rhythm.sampleEnd - rhythm.sampleStart, 3) + ' sample' : ''}
           {track.muted ? ' · Muted' : ''}</p></div></div>
       <div className="sequence-tools">
-        <button type="button" className={sequence.enabled ? '' : 'create-rhythm'} disabled={studio.busy}
+        {!studio.editingPattern && <button type="button" className={sequence.enabled ? '' : 'create-rhythm'} disabled={studio.busy}
           ref={!rhythm.initialized ? editButton : undefined} aria-expanded={!rhythm.initialized ? editing : undefined}
           aria-pressed={rhythm.initialized ? sequence.enabled : undefined}
           aria-label={(sequence.enabled ? 'Turn off rhythm for ' : rhythm.initialized ? 'Turn on rhythm for ' : 'Choose sample for ') + track.name}
           onClick={() => sequence.enabled ? studio.setSequenced(track.id, false) : rhythm.initialized ? studio.createRhythm(track.id) : editing ? studio.closeClip() : studio.openClip(track.id, 'sequencer')}>
-          {sequence.enabled ? 'Rhythm on' : rhythm.initialized ? 'Rhythm off' : 'Choose sample'}</button>
+          {sequence.enabled ? 'Rhythm on' : rhythm.initialized ? 'Rhythm off' : 'Choose sample'}</button>}
         {rhythm.initialized && <button ref={editButton} type="button" disabled={studio.busy} aria-expanded={editing} aria-label={'Edit sample for ' + track.name}
           onClick={() => editing ? studio.closeClip() : studio.openClip(track.id, 'sequencer')}>Edit sample</button>
         }
       </div>
     </div>
-    {studio.arrangement.enabled && <p className="sequence-window">Timeline {clockTime(placement.start, 2)}–{clockTime(placement.end ?? studio.arrangement.duration, 2)}</p>}
+    {!studio.editingPattern && studio.arrangement.enabled && <p className="sequence-window">Timeline {clockTime(placement.start, 2)}–{clockTime(placement.end ?? studio.arrangement.duration, 2)}</p>}
     {editing && <ClipEditor track={track} info={studio.details[track.id]} studio={studio} location="sequencer" />}
     {rhythm.initialized ? <>
       {!sequence.enabled && <p className="sequence-idle">Off in the mix. Your steps and sample are kept; you can edit or hear this rhythm here.</p>}
@@ -111,29 +112,33 @@ function SequenceRow({ track, studio }) {
   </article>;
 }
 
-export default function StepSequencer({ studio }) {
+export default function StepSequencer({ studio: workspace }) {
+  const bank = workspace.patterns?.find(pattern => pattern.id === workspace.activePatternId);
+  const studio = bank ? { ...workspace, tracks: bank.rows, editingPattern: true, currentStep: workspace.patternPreview?.id === bank.id ? workspace.patternPreview.step : null } : { ...workspace, tracks: workspace.tracks.filter(track => !track.patternBlock) };
   const enabled = studio.tracks.filter((track) => sequenceMetadata(track).enabled);
   const initialized = studio.tracks.filter((track) => rhythmMetadata(track).initialized);
   const recordings = studio.tracks.filter((track) => !rhythmMetadata(track).initialized);
-  const slots = Math.min(MAX_TRACKS - studio.sources.length, MAX_CLIPS - studio.tracks.length);
-  const canAddKit = slots >= 1 && studio.tracks.length + 3 <= MAX_CLIPS;
+  const slots = Math.min(MAX_TRACKS - studio.sources.length, MAX_CLIPS - workspace.tracks.length);
+  const canAddKit = slots >= 1 && workspace.tracks.length + 3 <= MAX_CLIPS;
   const active = studio.status === 'playing' || studio.status === 'loading';
   return <section className="sequencer panel" id="rhythm" aria-labelledby="sequencer-title">
     <div className="sequencer-heading"><div><h2 id="sequencer-title" className="sr-only">Beat sequencer</h2>
       <p className="sequencer-intro">Use <a href="#/arrangement">Arrangement</a> for vocals and full songs.</p></div>
       <a className="sequencer-save" href="#/saved-mixes">{studio.activeProject ? (studio.dirty ? 'Save your changes' : 'View saved mix') : 'Save your mix'} <span aria-hidden="true">↗</span></a></div>
-    {studio.arrangement.enabled && <div className="rhythm-arrangement-banner"><div><strong>Arrangement is on</strong><p>Mix follows the timeline and ends at {clockTime(studio.arrangement.duration)}. Hear rhythm previews one row.</p></div><button type="button" disabled={studio.busy} onClick={studio.freeMix}>Switch to Free mix</button></div>}
-    <div className="drum-starter"><div><strong>Start with a drum beat</strong><p>Kick, snare and hi-hat · adds 3 drum rows and keeps your clips.</p></div>
+    {!!workspace.patterns?.length && <PatternBank studio={workspace} />}
+    {!bank && studio.arrangement.enabled && <div className="rhythm-arrangement-banner"><div><strong>Arrangement is on</strong><p>Mix follows the timeline and ends at {clockTime(studio.arrangement.duration)}. Hear rhythm previews one row.</p></div><button type="button" disabled={studio.busy || workspace.tracks.some(track => track.patternBlock)} title={workspace.tracks.some(track => track.patternBlock) ? 'Rhythm sections use the timeline' : undefined} onClick={studio.freeMix}>Switch to Free mix</button></div>}
+    {!bank && <div className="drum-starter"><div><strong>Start with a drum beat</strong><p>Kick, snare and hi-hat · adds 3 drum rows and keeps your clips.</p></div>
       <button type="button" className="create-rhythm" disabled={studio.busy || !canAddKit} onClick={() => studio.addDrumBeat()}>Add drum beat</button>
       <details><summary>Add one drum</summary><div className="single-drums">{DRUMS.map((drum) => <button key={drum.id} type="button" disabled={studio.busy || slots < 1} onClick={() => studio.addDrumBeat([drum.id])}>{drum.name}</button>)}</div></details>
       {!canAddKit && <p className="drum-space" role="status">{slots > 0 ? 'Not enough clip rows for a full beat. Add one drum, or remove a clip first.' : 'No space left. Remove an unused recording or clip in Studio to add drums.'}</p>}
-    </div>
+    </div>}
+    {!workspace.patterns?.length && enabled.length > 0 && <PatternBank studio={workspace} />}
     <div className="sequencer-toolbar">
-      <div className="sequencer-playback"><button type="button" className="play-button" disabled={studio.booting || (!active && studio.busy) || !studio.tracks.length} onClick={studio.togglePlayback}>
+      {!bank && <div className="sequencer-playback"><button type="button" className="play-button" disabled={studio.booting || (!active && studio.busy) || !studio.tracks.length} onClick={studio.togglePlayback}>
         <Icon name={active ? 'pause' : 'play'} size={18} />{studio.status === 'loading' ? 'Cancel loading' : active ? 'Pause full mix' : 'Play full mix'}</button>
-        <button type="button" className="restart-button" disabled={studio.busy || !studio.tracks.length} aria-label="Restart rhythm and mix" onClick={studio.restartPlayback}><Icon name="reset" size={18} /></button></div>
+        <button type="button" className="restart-button" disabled={studio.busy || !studio.tracks.length} aria-label="Restart rhythm and mix" onClick={studio.restartPlayback}><Icon name="reset" size={18} /></button></div>}
       <div className="sequencer-meter"><span>4 beats · 16 steps · repeating loop</span><output aria-label="Sequencer position">{studio.currentStep === null ? 'Stopped' : 'Beat ' + (Math.floor(studio.currentStep / 4) + 1) + ' · step ' + (studio.currentStep + 1)}</output></div>
-      <TempoInput key={(studio.activeProject?.id || 'workspace') + '-' + studio.bpm} studio={studio} />
+      <TempoInput key={(studio.activeProject?.id || 'workspace') + '-' + studio.bpm} studio={workspace} />
     </div>
     <div className="sequencer-feedback" role="status">{studio.tempo.pending
       ? 'Playing at ' + studio.tempo.active + ' BPM. ' + studio.tempo.pending + ' BPM starts at the next loop.'
@@ -141,6 +146,6 @@ export default function StepSequencer({ studio }) {
       {enabled.length > 0 && <span>{clockTime(stepSeconds(studio.tempo.active) * STEP_COUNT, 2)} per loop</span>}</div>
     <div className="sequence-rows">{initialized.map((track) => <SequenceRow key={track.id} track={track} studio={studio} />)}</div>
     {!!recordings.length && <details className="custom-rhythm-samples"><summary>Use a sample from your recordings ({recordings.length})</summary><div className="sequence-rows">{recordings.map((track) => <SequenceRow key={track.id} track={track} studio={studio} />)}</div></details>}
-    <details className="workspace-help"><summary>Rhythm help</summary><p>Each row repeats one short sample across 16 steps. Hear rhythm plays one row once and pauses the full mix. Play full mix plays all clips. Rhythm replaces normal playback for that clip; Rhythm off restores it and keeps your pattern.</p><p>Drums are synthesized locally and saved with your project. Speed changes start at the next loop. Pattern options contains Four beats, Clear steps and sample tails. This is a one-bar beat maker; it does not detect a song's tempo or stretch vocals to a beat.</p></details>
+    <details className="workspace-help"><summary>Rhythm help</summary><p>Each row repeats one short sample across 16 steps. Hear rhythm plays one row once and pauses the full mix. Play full mix plays all clips. Rhythm replaces normal playback for that clip; Rhythm off restores it and keeps your pattern.</p><p>Drums are synthesized locally and saved with your project. Speed changes start at the next loop unless placed sections need to be retimed. Pattern options contains Four beats, Clear steps and sample tails. This is a one-bar beat maker; it does not detect a song's tempo or stretch vocals to a beat.</p></details>
   </section>;
 }

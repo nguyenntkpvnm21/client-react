@@ -1,3 +1,5 @@
+import { visibleParts } from './lib/patternSections.js';
+import './PatternSections.css';
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import Arrangement from './components/Arrangement';
@@ -54,8 +56,8 @@ export default function App() {
         <Icon name={pageIcons[item.id]} size={20} /><span>{item.label}</span>{item.id === 'saved-mixes' && studio.savedMixes.length > 0 && <span className="sidebar-count">{studio.savedMixes.length}</span>}
       </a>)}</nav>
       <div className="sidebar-project"><span className="sidebar-eyebrow">CURRENT PROJECT</span><a href="#/saved-mixes" aria-label="View current project in Saved mixes"><span className="sidebar-project-art"><Icon name="music" size={21} /></span><span><strong>{studio.activeProject?.name || 'Untitled mix'}</strong><small>{studio.activeProject ? studio.dirty ? 'Unsaved changes' : 'Saved mix' : 'Save your creation'}</small></span><Icon name="arrow" size={16} /></a></div>
-      <section className="sidebar-layer-list" aria-label="Current layers"><div><h2>Your clips</h2><span>{studio.tracks.length}</span></div>
-        {studio.tracks.length ? <ul>{studio.tracks.map((track) => <li className={track.role} key={track.id}><span className="sidebar-layer-dot" /><span title={track.name}>{track.name}</span><span className="sidebar-layer-type">{track.role}</span></li>)}</ul> : <p>Add a sound to get started.</p>}
+      <section className="sidebar-layer-list" aria-label="Current layers"><div><h2>Your mix</h2><span>{visibleParts(studio).length}</span></div>
+        {studio.tracks.length ? <ul>{visibleParts(studio).map((track) => <li className={track.role} key={track.id}><span className="sidebar-layer-dot" /><span title={track.name}>{track.name}</span><span className="sidebar-layer-type">{track.role}</span></li>)}</ul> : <p>Add a sound to get started.</p>}
       </section>
       <div className="sidebar-footnote"><Icon name="headphones" size={18} /><span>A space for your sound.<small>Create. Listen. Make it yours.</small></span></div>
     </aside>

@@ -1,6 +1,7 @@
+import { selectedPart } from '../lib/patternSections.js';
 export default function EditHistory({ studio }) {
   const disabled = studio.busy;
-  const selected = studio.tracks.find(track => track.id === studio.selectedClipId);
+  const selected = selectedPart(studio, studio.selectedClipId);
   return <div className="edit-history" aria-label="Edit history and selection">
     <div className="history-buttons" role="group" aria-label="Undo and redo">
       <button type="button" disabled={disabled || !studio.historyStatus.undo} onClick={studio.undo} title={studio.historyStatus.undo ? 'Undo ' + studio.historyStatus.undo + ' · Ctrl/⌘ Z' : 'Nothing to undo'} aria-label={studio.historyStatus.undo ? 'Undo ' + studio.historyStatus.undo : 'Undo'}>Undo</button>
