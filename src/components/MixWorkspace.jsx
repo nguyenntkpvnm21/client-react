@@ -1,3 +1,5 @@
+import PatternSectionRow from './PatternSectionRow';
+import { patternGroups } from '../lib/patternSections.js';
 import { MAX_CLIPS } from '../data/sounds.js';
 import Icon from './Icon';
 import TrackControl from './TrackControl';
@@ -16,7 +18,8 @@ export default function MixWorkspace({ studio }) {
     <div className="blend-row"><span>Base blends</span><div role="group" aria-label="Included sound blends">{BLENDS.map((blend) => <button key={blend.id} type="button" disabled={studio.busy}
       aria-pressed={['music', 'rain', 'birds'].every((id) => studio.tracks.some((track) => track.id === id && track.volume === blend.volumes[id] && track.muted === (blend.volumes[id] === 0) && !track.solo))}
       onClick={() => studio.applyBlend(blend.volumes)}>{blend.name}</button>)}</div></div>
-    <div className="track-list">{studio.tracks.map((track, index) => <TrackControl key={track.id} track={track} index={index} studio={studio} />)}
+    <div className="track-list">{studio.tracks.filter(track => !track.patternBlock).map((track, index) => <TrackControl key={track.id} track={track} index={index} studio={studio} />)}
+      {patternGroups(studio.tracks, studio.bpm).map(block => <PatternSectionRow key={block.id} block={block} studio={studio} compact />)}
       {!studio.tracks.length && <div className="empty-mix"><Icon name="layers" size={32} /><h3>A blank canvas, made of sound.</h3><p>Add a library sound or import your own recording to start.</p></div>}
     </div>
     <div className="mixer-note"><Icon name="headphones" size={16} /><p>Nature sets the scene. Your music gives it a new story.</p></div>

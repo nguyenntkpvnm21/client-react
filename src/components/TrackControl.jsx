@@ -1,3 +1,4 @@
+import { historyGesture } from '../lib/historyGesture.js';
 import { isSequenced } from '../lib/sequencerState.js';
 import ClipEditor from './ClipEditor';
 import { ROLES, SOUNDS } from '../data/sounds.js';
@@ -10,7 +11,7 @@ export default function TrackControl({ track, index, studio }) {
   const info = studio.details[track.id];
   const soloActive = studio.tracks.some((item) => item.solo);
   const quiet = track.muted || (soloActive && !track.solo);
-  return <article data-clip-id={track.id} className={'track-card ' + track.role + (quiet ? ' is-quiet' : '')} aria-label={track.name + ' layer'}>
+  return <article data-clip-id={track.id} className={'track-card ' + track.role + (quiet ? ' is-quiet' : '') + (studio.selectedClipId === track.id ? ' is-selected' : '')} aria-label={track.name + ' layer'} onPointerDown={() => studio.selectClip(track.id)} onFocusCapture={() => studio.selectClip(track.id)}>
     <div className="track-heading">
       <span className="track-index">{String(index + 1).padStart(2, '0')}</span>
       <span className="track-icon"><Icon name={sound?.icon || (track.role === 'nature' ? 'leaf' : track.role)} size={22} /></span>
@@ -27,7 +28,7 @@ export default function TrackControl({ track, index, studio }) {
         {info ? <svg viewBox="0 0 240 42" preserveAspectRatio="none">{info.peaks.map((peak, bar) => <rect key={bar} x={bar * 5} y={21 - Math.max(2, peak * 19)} width="3" height={Math.max(4, peak * 38)} rx="1.5" />)}</svg>
           : <span className="waveform-pending">Waveform loads with audio</span>}
       </div>
-      <label className="track-level"><span className="sr-only">{track.name + ' volume'}</span><input type="range" min="0" max="100" value={track.volume}
+      <label className="track-level"><span className="sr-only">{track.name + ' volume'}</span><input {...historyGesture(studio, 'level:' + track.id)} type="range" min="0" max="100" value={track.volume}
         style={{ '--level': track.volume + '%' }} disabled={studio.projectBusy} onChange={(event) => studio.updateTrack(track.id, { volume: Number(event.target.value) })} /><output>{track.volume}%</output></label>
     </div>
     <div className="clip-summary"><button type="button" className="text-button" disabled={studio.busy} aria-label={'Duplicate ' + track.name} onClick={() => studio.duplicateClip(track.id)}>Duplicate clip</button><button type="button" className="text-button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'mixer'}

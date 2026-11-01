@@ -14,7 +14,7 @@ export function mixName(value) {
 export function validateProject(value) {
   const mix = validateMix(value?.mix);
   if (value?.version !== 1 || typeof value.id !== 'string' || !value.id.startsWith('mix-') || value.id.length > 100
-    || !mix || mix.tracks.length !== value.mix.tracks.length || (value.mix.sources && mix.sources.length !== value.mix.sources.length) || value.id.length <= 4
+    || !mix || mix.tracks.length !== value.mix.tracks.length || (value.mix.sources && mix.sources.length !== value.mix.sources.length) || (value.mix.patterns && (mix.patterns?.length || 0) !== value.mix.patterns.length) || value.id.length <= 4
     || typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string'
     || !Number.isFinite(Date.parse(value.createdAt)) || !Number.isFinite(Date.parse(value.updatedAt))) {
     throw new Error('Saved mixes contain invalid data. Their stored records have been preserved.');

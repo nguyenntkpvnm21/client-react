@@ -5,12 +5,13 @@ import { isSequenced, sequenceMetadata, stepSeconds } from '../lib/sequencerStat
 import { rhythmRegion } from '../lib/rhythmState.js';
 import { clockTime } from '../lib/timeFormat.js';
 
-export default function TimelineClip({ track, studio, window, snap, cursor }) {
+export default function TimelineClip({ track, studio, window, snap, cursor, snapSize, section = false }) {
   const [draft, setDraft] = useState(null);
   const [error, setError] = useState('');
   const gesture = useRef(null);
   const current = draft || window;
   const duration = studio.arrangement.duration;
+  const grid = section ? snapSize : snap ? 60 / studio.bpm : 0;
   const info = studio.details[track.id];
   const sequenced = isSequenced(track);
   const region = useMemo(() => info ? (sequenced ? rhythmRegion(track, info.duration) : clipRegion(track, info.duration)) : null, [info, sequenced, track]);
@@ -51,7 +52,7 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
     const g = gesture.current;
     if (!g || g.id !== event.pointerId) return;
     const delta = (event.clientX - g.x) / g.width * duration;
-    g.draft = editTimelineWindow(g.original, g.action, delta, duration, snap ? 60 / studio.bpm : 0);
+    g.draft = editTimelineWindow(g.original, g.action, delta, duration, grid);
     setDraft(g.draft);
   }
   function finish(event, cancel = false) {
@@ -67,12 +68,13 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp'].includes(event.key)) return;
     event.preventDefault();
     const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1;
-    commit(editTimelineWindow(window, action, direction * (event.shiftKey ? .01 : snap ? 60 / studio.bpm : .1), duration, event.shiftKey ? 0 : snap ? 60 / studio.bpm : 0), action);
+    studio.beginEditGesture('placement:' + track.id);
+    commit(editTimelineWindow(window, action, direction * (section ? grid : event.shiftKey ? .01 : grid || .1), duration, section ? grid : event.shiftKey ? 0 : grid), action);
   }
   const handles = [['start', 'entry', current.start, current.start, 0, current.end - .05], ['end', 'exit', current.end, current.end, current.start + .05, duration],
     ['fadeIn', 'fade in', current.start + current.fadeIn, current.fadeIn, 0, length - current.fadeOut], ['fadeOut', 'fade out', current.end - current.fadeOut, current.fadeOut, 0, length - current.fadeIn]];
   return <div className="timeline-clip-wrap">
-    <div className="arrangement-lane timeline-edit-lane" role="group" aria-label={track.name + ' timeline'} onPointerDown={begin} onPointerMove={drag} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={() => { gesture.current = null; setDraft(null); }}>
+    <div className="arrangement-lane timeline-edit-lane" role="group" aria-label={track.name + ' timeline'} onKeyUp={() => studio.endEditGesture('placement:' + track.id)} onBlur={() => studio.endEditGesture('placement:' + track.id)} onPointerDown={begin} onPointerMove={drag} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={() => { gesture.current = null; setDraft(null); }}>
       <div className="timeline-clip" style={{ left: position(current.start) + '%', width: position(length) + '%' }}>
         <div className="timeline-source" style={{ width: audible / length * 100 + '%' }} />
         <svg className="timeline-wave" viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true"><path d={path} /></svg>
@@ -80,7 +82,7 @@ export default function TimelineClip({ track, studio, window, snap, cursor }) {
         <div className="timeline-fade timeline-fade-in" style={{ width: current.fadeIn / length * 100 + '%' }} /><div className="timeline-fade timeline-fade-out" style={{ width: current.fadeOut / length * 100 + '%' }} />
         <div className="timeline-move" role="button" tabIndex={studio.busy ? -1 : 0} aria-label={'Move ' + track.name + ' in timeline'} data-timeline-action="move" onKeyDown={(event) => key(event, 'move')}><span>{track.name}</span></div>
       </div>
-      {handles.map(([action, label, at, value, min, max]) => <div key={action} className={'timeline-handle timeline-' + action} role="slider" tabIndex={studio.busy ? -1 : 0} data-timeline-action={action}
+      {handles.filter(([action]) => !section || action === 'start' || action === 'end').map(([action, label, at, value, min, max]) => <div key={action} className={'timeline-handle timeline-' + action} role="slider" tabIndex={studio.busy ? -1 : 0} data-timeline-action={action}
         aria-label={track.name + ' timeline ' + label} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} aria-valuetext={value.toFixed(2) + ' seconds'} onKeyDown={(event) => key(event, action)}
         style={{ left: `clamp(22px, ${position(at)}%, calc(100% - 22px))` }}><span>{action === 'start' ? '↤' : action === 'end' ? '↦' : action === 'fadeIn' ? '◩' : '◪'}</span></div>)}
       {cursor !== null && <div className="arrangement-cursor" style={{ left: cursor + '%' }} aria-hidden="true" />}

@@ -1,6 +1,9 @@
+import { visibleParts } from './lib/patternSections.js';
+import './PatternSections.css';
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import Arrangement from './components/Arrangement';
+import EditHistory from './components/EditHistory';
 import AudioImport from './components/AudioImport';
 import Icon from './components/Icon';
 import MixWorkspace from './components/MixWorkspace';
@@ -15,6 +18,7 @@ import { pageFromHash, STUDIO_PAGES } from './lib/studioPages.js';
 import './StudioPages.css';
 import './StudioTheme.css';
 import './BeginnerUi.css';
+import './EditHistory.css';
 
 const pageIcons = { studio: 'layers', rhythm: 'rhythm', arrangement: 'timeline', 'saved-mixes': 'library' };
 
@@ -52,14 +56,14 @@ export default function App() {
         <Icon name={pageIcons[item.id]} size={20} /><span>{item.label}</span>{item.id === 'saved-mixes' && studio.savedMixes.length > 0 && <span className="sidebar-count">{studio.savedMixes.length}</span>}
       </a>)}</nav>
       <div className="sidebar-project"><span className="sidebar-eyebrow">CURRENT PROJECT</span><a href="#/saved-mixes" aria-label="View current project in Saved mixes"><span className="sidebar-project-art"><Icon name="music" size={21} /></span><span><strong>{studio.activeProject?.name || 'Untitled mix'}</strong><small>{studio.activeProject ? studio.dirty ? 'Unsaved changes' : 'Saved mix' : 'Save your creation'}</small></span><Icon name="arrow" size={16} /></a></div>
-      <section className="sidebar-layer-list" aria-label="Current layers"><div><h2>Your clips</h2><span>{studio.tracks.length}</span></div>
-        {studio.tracks.length ? <ul>{studio.tracks.map((track) => <li className={track.role} key={track.id}><span className="sidebar-layer-dot" /><span title={track.name}>{track.name}</span><span className="sidebar-layer-type">{track.role}</span></li>)}</ul> : <p>Add a sound to get started.</p>}
+      <section className="sidebar-layer-list" aria-label="Current layers"><div><h2>Your mix</h2><span>{visibleParts(studio).length}</span></div>
+        {studio.tracks.length ? <ul>{visibleParts(studio).map((track) => <li className={track.role} key={track.id}><span className="sidebar-layer-dot" /><span title={track.name}>{track.name}</span><span className="sidebar-layer-type">{track.role}</span></li>)}</ul> : <p>Add a sound to get started.</p>}
       </section>
       <div className="sidebar-footnote"><Icon name="headphones" size={18} /><span>A space for your sound.<small>Create. Listen. Make it yours.</small></span></div>
     </aside>
     <div className="studio-content-shell">
     <header className="workspace-header"><div className="workspace-breadcrumb"><Icon name={pageIcons[page.id]} size={18} /><span>Workspace</span><span aria-hidden="true">/</span><strong>{page.label}</strong></div>
-      <div className="workspace-header-actions"><span className="local-label"><span className="small-dot" />On this device</span>
+      <EditHistory studio={studio} /><div className="workspace-header-actions"><span className="local-label"><span className="small-dot" />On this device</span>
         {page.id === 'studio' ? <button type="button" className="primary-button" disabled={studio.busy} onClick={() => inputRef.current?.click()}><Icon name="plus" size={16} />Add audio</button> : <a className="primary-button" href="#/studio"><Icon name="plus" size={16} />Add audio</a>}
       </div></header>
     <main className={'app-main page-' + page.id} id="main-content" ref={mainRef} tabIndex={-1} aria-labelledby="page-title">

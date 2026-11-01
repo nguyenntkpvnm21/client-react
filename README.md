@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 188 tests, plus 8 separate Focus Session tests. No additional testing dependency is required.
+The automated suite has 209 tests, plus 8 separate Focus Session tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -233,8 +233,8 @@ source and separate one-shots produced native rendered WAVs differing by at most
 one 16-bit PCM level. Four pages at six viewport sizes (320–1440 px) were checked
 for overflow, bottom actions and the time-entry popup. Physical touch devices,
 Safari/Firefox and a beginner user study remain unverified. Rhythm still makes
-one-bar sample patterns; it does not provide melodic instruments or song-length
-pattern arrangement.
+one-bar sample patterns; A/B snapshots can now repeat as sections on the song
+timeline. Melodic instruments and automatic tempo detection remain outside scope.
 
 ### Sample tails
 
@@ -378,7 +378,7 @@ Saved mixes contain configurations, not a rendered WAV/MP3 file.
 
 ## Verification
 
-The 148 tests cover migration, separate regions, clear/enable preservation,
+The 209 tests cover migration, separate regions, clear/enable preservation,
 selection bounds and stereo detection, timeline bounds/snap/fades, mono/ringing
 scheduling, bounded overlaps, finite isolated previews, cancellation, future
 entries, source offsets, pause/resume across tempo changes, finite completion,
@@ -529,10 +529,88 @@ waveform, rhythm and offline-render code. Memory counts unique buffers. Removing
 one clip does not abort or free audio used by a sibling; clearing a project
 invalidates all its outstanding aliases.
 
+## Edit history and selection
+
+Undo/Redo in the shared header is available on all four pages. Ctrl/Command+Z
+undoes; Ctrl/Command+Shift+Z or Ctrl+Y redoes. Text inputs keep their native undo.
+One drag/held-key adjustment of a level slider is one action; timeline drags
+already apply on release. Add drum beat creates one action for all three rows.
+Split, trim, duplicate, source/clip deletion, sample selection, step edits, speed
+and level changes are reversible. Editing after Undo clears Redo.
+
+History retains at most 50 metadata snapshots and source IDs, never PCM buffers
+or copies of original recordings. Removed audio remains protected while Undo or
+Redo can reach it. Opening a saved mix, starting a scene or reloading starts a
+fresh history; save/rename/delete of saved-library entries are not undoable.
+Restoring an edit closes an unapplied editor draft and preserves the current
+workspace cursor and play/pause intent where the restored duration permits.
+The Free mix/Arrangement listening mode and temporary section loop are not edit
+history. Saving a mix still needs Save changes after an undone/redone edit.
+
+The selected clip has a lime outline and a header label. Selection is separate
+from the cyan sample range and the listening cursor. Isolated sample/rhythm
+previews are identified in the shared player with a stop button.
+
+## NatureMix patterns in your song
+
+NatureMix combines vocals, instrumental music, nature recordings and handmade
+beats. Patterns A/B add structure to that mix without adding a new page or
+turning Rhythm into a full instrument workstation.
+
+1. In Rhythm, create a drum beat and/or choose a short hit from a nature recording.
+2. Keep beat as pattern A snapshots the currently enabled, unplaced rhythm rows.
+   Current rhythm remains available for the original clip controls.
+3. Make variation B creates independent rows sharing the same original sources.
+   Edit steps, level, mute, sample and tail policy. Hear pattern loops all its rows
+   in isolation, while Hear rhythm auditions one row and Hear sample its source.
+4. Choose a start bar (bar 1 is the song start) and repeat count, then Add to
+   Arrangement. The suggested start follows the last placed section. The first
+   addition moves matching current rhythm rows into that section, preventing a
+   doubled beat. Later additions copy the pattern. Undo reverses an addition.
+5. Each section appears as one timeline row. Move and resize in whole bars,
+   adjust its level, Solo/Mute, duplicate or remove it. Repeat count extends the
+   section, without creating a clip per bar. Play from here plays the arrangement
+   from the section start, including other audible layers.
+
+A placed section keeps its own steps and samples. Editing/renaming/removing A/B
+changes future additions only. To use a revised beat in the song, remove the old
+section and add the edited pattern at that bar. Removing a bank never removes
+already placed sections or their sources. Pattern details and Section options
+keep secondary controls collapsed.
+
+Both patterns remain one bar of 16 steps; a song can repeat sections of either.
+Changing global speed pauses playback when sections exist: sections retain bar
+positions while vocal/normal audio clips retain their times in seconds. There
+is no time stretching or automatic beat matching. Placed sections require
+Arrangement mode; Free mix is unavailable until they are removed, so sections
+cannot accidentally all sound together outside their time windows.
+
+A/B metadata is included in workspace persistence, Saved mixes, Undo/Redo and
+portable project v2 files. Older saved mixes and project v1/v2 files without
+banks remain readable. Original audio remains shared by source ID; bank previews
+borrow decoded buffers. Borrowed buffers remain protected from cache eviction
+and count toward the workspace's 1 GiB budget until audition stops. Pattern-row
+identities must be unique across banks and placed/current clips, preventing
+ambiguous playback or edits when opening damaged project data.
+The limits stay 8 sources, 32 placed sound clips and
+5:00 per arrangement; the bank has at most two snapshots, up to 32 rows each.
+A multi-sound section uses one clip slot per sound, regardless of repeat count.
+No audio assets, dependency or IndexedDB schema changes are needed.
+
+Native Chromium checks exercise nature samples plus drums, independent A/B,
+whole-pattern and row audition, live step edits, first-placement deduplication,
+whole-section Undo, native touch and keyboard moves, group Solo/Mute, duplication,
+removal, save/reload, and backup/restore to a clean profile with catalog requests
+blocked. Full-length WAVs before/after restore differ by at most one PCM16 level
+in the test fixture. Four pages at six sizes (320–1440 px) have no page overflow
+or covered bottom actions. Firefox, Safari, physical phones and a beginner user
+study remain unverified.
+
 ## Source handoff
 
-This update is based on main `f2ca92d`, including project/scene commit `d972399`
-and its phone confirmation-focus fix. It keeps the four pages, black/neon theme,
+This update is based on main `a4202e5`, including sample/drum improvements
+`9ea5adb`, beginner flow `f9634bf`, reusable clips `a12c80e` and project backups
+`d972399`. It keeps the four pages, black/neon theme,
 44.1 kHz serialized decoding, 1 GiB memory budget, scene starters, loop audition,
 WAV export and imported/saved audio. No dependency, audio asset or database
 schema changes are required.

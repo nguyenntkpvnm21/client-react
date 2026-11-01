@@ -24,8 +24,15 @@ export async function createProjectBackup({ mix, name, resolveAudio, signal, onP
   const snapshot = serializeMix(mix);
   // A portable project must not depend on future catalog IDs, names or defaults.
   const ids = new Map(snapshot.sources.map((source, index) => [source.id, 'custom-backup-' + index]));
-  const portable = { ...snapshot, sources: snapshot.sources.map((source) => ({ ...source, id: ids.get(source.id), catalogId: null })),
+  const portable = { ...snapshot, ...(snapshot.patterns ? { patterns: snapshot.patterns.map(pattern => ({ ...pattern,
+    rows: pattern.rows.map(row => ({ ...row, sourceId: ids.get(sourceId(row)), catalogId: null })) })) } : {}), sources: snapshot.sources.map((source) => ({ ...source, id: ids.get(source.id), catalogId: null })),
     tracks: snapshot.tracks.map((track, index) => ({ ...track, id: 'custom-backup-clip-' + index, sourceId: ids.get(sourceId(track)), catalogId: null })) };
+  if (portable.patterns) {
+    const clipIds = new Map(snapshot.tracks.map((track, index) => [track.id, portable.tracks[index].id]));
+    for (const pattern of portable.patterns) for (const row of pattern.rows) {
+      if (clipIds.has(row.originId)) row.originId = clipIds.get(row.originId);else delete row.originId;
+    }
+  }
   const assets = [], blobs = [];
   for (const track of snapshot.sources) {
     checkCanceled(signal);
@@ -94,6 +101,17 @@ export function restoredProject(backup, name, uuid = () => crypto.randomUUID()) 
     files.set(id, new File([blob], source.name, { type: blob.type }));
     return { ...source, id, catalogId: null };
   });
-  const tracks = backup.mix.tracks.map((track) => ({ ...track, id: 'custom-' + uuid(), sourceId: ids.get(sourceId(track)), catalogId: null }));
-  return { id: 'mix-' + uuid(), name: mixName(name), mix: serializeMix({ ...backup.mix, sources, tracks }), files };
+  const clipIds = new Map(backup.mix.tracks.map(track => [track.id, 'custom-' + uuid()]));
+  const blocks = new Map();
+  const tracks = backup.mix.tracks.map((track) => {
+    if (track.patternBlock && !blocks.has(track.patternBlock.id)) blocks.set(track.patternBlock.id, 'block-' + uuid());
+    return { ...track, id: clipIds.get(track.id), sourceId: ids.get(sourceId(track)), catalogId: null,
+      ...(track.patternBlock ? { patternBlock: { ...track.patternBlock, id: blocks.get(track.patternBlock.id) } } : {}) };
+  });
+  const patterns = backup.mix.patterns?.map(pattern => ({ ...pattern, id: 'pattern-' + uuid(), rows: pattern.rows.map(row => {
+    const next = { ...row, id: 'custom-pattern-row-' + uuid(), sourceId: ids.get(sourceId(row)), catalogId: null };
+    if (clipIds.has(row.originId)) next.originId = clipIds.get(row.originId);else delete next.originId;
+    return next;
+  }) }));
+  return { id: 'mix-' + uuid(), name: mixName(name), mix: serializeMix({ ...backup.mix, ...(patterns ? { patterns } : {}), sources, tracks }), files };
 }

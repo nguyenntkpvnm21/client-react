@@ -1,3 +1,5 @@
+import { barSeconds, capturePattern, copyPattern as copyRhythmPattern, editBlock, patternName, patternSourceCount, placePattern, retimeBlocks, selectedPart, copyBlock } from '../lib/patternSections.js';
+import { MixHistory } from '../lib/mixHistory.js';
 import { clipName, ensureClipSlot, sourceId } from '../lib/audioSources.js';
 import { DRUMS, drumKit, drumTrack } from '../lib/drumStarter.js';
 import { duplicateClip, placedClip, splitClip, trimmedClip } from '../lib/clipInstances.js';
@@ -29,7 +31,14 @@ function withSources(tracks) {
 }
 
 export default function useStudio() {
-  const [mix, setMix] = useState(initialMix);
+  const [mix, setMixState] = useState(initialMix);
+  const history = useRef(new MixHistory());
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [selectedClipId, setSelectedClipId] = useState(null);
+  const [activePatternId, setActivePatternId] = useState(() => mix.patterns?.[0]?.id || null);
+  const [patternPreview, setPatternPreview] = useState(null);
+  const patternAudition = useRef(null);
+  const selectedRef = useRef(null);
   const [loopSection, setLoopSectionState] = useState(() => initialLoopRegion(arrangementMetadata(mix.arrangement).duration));
   const loopRef = useRef(loopSection);
   const [exportState, setExportState] = useState(null);
@@ -56,7 +65,7 @@ export default function useStudio() {
   const [preview, setPreview] = useState(null);
   const engine = useRef(null);
   const files = useRef({});
-  const mixRef = useRef(null);
+  const mixRef = useRef(mix);
   const alive = useRef(false);
   const importLock = useRef(false);
   const projectLock = useRef(false);
@@ -76,7 +85,7 @@ export default function useStudio() {
     const player = new AudioEngine({
       onError: (error) => { if (!canceled) setNotice(error.message); },
       onState: (state) => { if (!canceled) {
-        if (state === 'playing' || state === 'loading') stopScene();
+        if (state === 'playing' || state === 'loading') { stopScene();stopPatternPreview(); }
         statusRef.current = state; setStatus(state);
       } },
       onTrack: (id, metadata) => { if (!canceled) setDetails((previous) => ({ ...previous, [id]: metadata })); },
@@ -98,7 +107,7 @@ export default function useStudio() {
         else { missing = true; blocked ||= result.status === 'rejected'; }
       });
       files.current = found;
-      setMix({ ...restored, sources: restored.sources.filter((source) => source.catalogId || found[source.id]), tracks: restored.tracks.filter((track) => track.catalogId || found[sourceId(track)]) });
+      setMixState(validateMix({ ...serializeMix(restored), sources: restored.sources.filter((source) => source.catalogId || found[source.id]), tracks: restored.tracks.filter((track) => track.catalogId || found[sourceId(track)]) }));
       setStorageBlocked(blocked);
       if (missing) setStorageNotice(blocked
         ? 'Saved audio could not be opened. Your saved workspace has been preserved; try reloading with browser storage enabled.'
@@ -114,10 +123,12 @@ export default function useStudio() {
       setBooting(false);
     })();
     const interval = window.setInterval(() => {
-      if (!canceled) { setElapsed(player.position()); setPreview(player.previewPosition()); setCurrentStep(player.currentStep()); setTempo(player.tempoState()); }
+      if (!canceled) {
+        if (patternAudition.current?.player.playing) setPatternPreview({ id: patternAudition.current.id, status: 'playing', step: patternAudition.current.player.currentStep() });
+        setElapsed(player.position()); setPreview(player.previewPosition()); setCurrentStep(player.currentStep()); setTempo(player.tempoState()); }
     }, 50);
     const visibility = () => {
-      if (document.hidden) stopScene();
+      if (document.hidden) { stopScene();stopPatternPreview(); }
       if (document.hidden) player.stopPreview();
       if (document.hidden && player.playing && (player.isSequencing() || player.loopRegion.enabled)) {
         player.pause();
@@ -137,7 +148,7 @@ export default function useStudio() {
       if (backupUrl.current) URL.revokeObjectURL(backupUrl.current);
       pendingBackup.current = null;
       transferJob.current?.controller.abort();transferJob.current?.validator?.dispose();
-      scenePlayer.current?.dispose();
+      scenePlayer.current?.dispose();patternAudition.current?.player.dispose();patternAudition.current = null;
       scenePlayer.current = null;
       player.dispose();
     };
@@ -147,7 +158,7 @@ export default function useStudio() {
     mixRef.current = mix;
     engine.current?.setArrangement(mix.arrangement);
     engine.current?.setBpm(mix.bpm ?? DEFAULT_BPM);
-    engine.current?.setTracks(withSources(mix.tracks));
+    engine.current?.setTracks(withSources(mix.tracks), mix.patterns?.flatMap(pattern => pattern.rows).find(row => row.id === engine.current?.patternPreview?.id));
     engine.current?.setMaster(mix.master);
   }, [mix]);
 
@@ -166,34 +177,111 @@ export default function useStudio() {
     persistWorkspace(mix, activeProjectId);
   }, [mix, activeProjectId, booting, storageBlocked]);
 
-  function changeMix(next) {
-    mixRef.current = next;
-    setMix(next);
+  function selectClip(id) {
+    const selected = selectedPart(mixRef.current, id) ? id : null;
+    selectedRef.current = selected;setSelectedClipId(selected);
   }
 
-  // If the persisted workspace cannot be read, retain files rather than risk deleting a reference.
-  async function reclaim(ids, next) {
+  function setMix(update, label = 'Edit mix', key, record = true) {
+    const previous = mixRef.current;
+    const next = typeof update === 'function' ? update(previous) : update;
+    if (next === previous) return;
+    if (record && history.current.record(previous, next, { label, key, selectedId: selectedRef.current })) setHistoryVersion(value => value + 1);
+    mixRef.current = next;setMixState(next);
+    const audition = patternAudition.current;
+    if (audition) {
+      const pattern = next.patterns?.find(item => item.id === audition.id);
+      if (pattern) { audition.player.setTracks(withSources(pattern.rows));audition.player.setMaster(next.master);audition.player.setBpm(next.bpm); }
+      else stopPatternPreview();
+    }
+    if (!selectedPart(next, selectedRef.current)) { selectedRef.current = null;setSelectedClipId(null); }
+  }
+
+  function changeMix(next, label = 'Edit mix', key, record = true) { setMix(next, label, key, record); }
+
+  function clearHistory() { stopPatternPreview();history.current.clear();setHistoryVersion(value => value + 1);selectedRef.current = null;setSelectedClipId(null); }
+  function beginEditGesture(key) { history.current.begin(key); }
+  function endEditGesture(key) { history.current.end(key); }
+
+  // History protects originals even after an unused source is removed from the workspace.
+  const reclaim = useCallback(async (ids, next) => {
     if (storageBlocked || projectsBlocked) return;
     let stored;
     try { stored = validateMix(JSON.parse(localStorage.getItem(STUDIO_STORAGE_KEY))); } catch { return; }
     if (!stored) return;
-    try { await deleteUnusedAudio(ids, { sources: [...next.sources, ...stored.sources], tracks: [...next.tracks, ...stored.tracks] }); }
-    catch { if (alive.current) setStorageNotice('Unused audio could not be cleaned up. Your remaining recordings have been kept.'); }
+    const retainedIds = history.current.audioIds();
+    const retained = [...next.sources, ...stored.sources, ...[...retainedIds].map(id => ({ id, catalogId: null }))];
+    try {
+      await deleteUnusedAudio(ids, { sources: retained, tracks: [] });
+      const live = new Set([...referencedAudio(mixRef.current, []), ...history.current.audioIds()]);
+      for (const id of ids) if (!live.has(id)) delete files.current[id];
+    } catch { if (alive.current) setStorageNotice('Unused audio could not be cleaned up. Your remaining recordings have been kept.'); }
+  }, [storageBlocked, projectsBlocked]);
+
+  useEffect(() => {
+    if (!booting && historyVersion) void reclaim(Object.keys(files.current), mixRef.current);
+  }, [historyVersion, booting, reclaim]);
+
+  async function restoreEdit(direction) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    const entry = history.current.peek(direction);
+    if (!entry) return false;
+    projectLock.current = true;setProjectBusy(true);
+    try {
+      const found = {};
+      for (const source of entry.mix.sources.filter(source => !source.catalogId)) {
+        const file = files.current[source.id] || await readAudio(source.id);
+        if (!(file instanceof Blob)) throw new Error('The original audio is unavailable. Your current mix has been kept.');
+        found[source.id] = file;
+      }
+      if (!alive.current) return false;
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      closeClip();seekIntent.current = null;
+      const restored = history.current.apply(direction, mixRef.current, selectedRef.current);
+      const next = validateMix(restored.mix);
+      Object.assign(files.current, found);
+      if (loopRef.current.end > next.arrangement.duration) resetLoop(next.arrangement.duration);
+      changeMix(next, undefined, undefined, false);selectClip(restored.selectedId);
+      setActivePatternId(next.patterns?.find(pattern => pattern.rows.some(row => row.id === restored.selectedId))?.id || null);setHistoryVersion(value => value + 1);
+      try { await rescheduleMix(next, Math.min(position, next.arrangement.enabled ? next.arrangement.duration : Infinity), resume); }
+      catch (error) { setNotice('Edit restored. Playback paused: ' + error.message);return true; }
+      setElapsed(engine.current.position());setNotice((direction === 'undo' ? 'Undid ' : 'Redid ') + restored.label + '.');
+      return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
   }
+
+  useEffect(() => {
+    function key(event) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.defaultPrevented || (event.target.closest('input, textarea, select, [contenteditable="true"]') && !event.target.matches('input[data-history-range]'))) return;
+      const command = event.key.toLowerCase();
+      if (command !== 'z' && command !== 'y') return;
+      event.preventDefault();
+      void restoreEdit(command === 'y' || event.shiftKey ? 'redo' : 'undo');
+    }
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  });
 
   function updateTrack(id, changes) {
     if (projectLock.current) return;
+    const owner = mixRef.current.patterns?.find(pattern => pattern.rows.some(row => row.id === id));
+    if (owner) {
+      const next = { ...mixRef.current, patterns: mixRef.current.patterns.map(pattern => pattern.id === owner.id ? { ...pattern,
+        rows: pattern.rows.map(row => row.id === id ? { ...row, ...changes } : row) } : pattern) };
+      changeMix(next, 'Edit pattern ' + owner.slot, changes.volume !== undefined ? 'level:' + id : undefined);return;
+    }
     const current = mixRef.current.tracks.find((track) => track.id === id);
     if (current && changes.loop !== undefined && (current.clipEnd != null || arrangementMetadata(mixRef.current.arrangement).enabled) && changes.loop !== current.loop) {
       engine.current.restart();
       setElapsed(0);
     }
-    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, ...changes } : track) }));
+    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, ...changes } : track) }), (changes.volume !== undefined ? 'Level' : changes.placement ? 'Move or trim' : changes.muted !== undefined ? 'Mute' : changes.solo !== undefined ? 'Solo' : 'Edit') + ' ' + (current?.name || 'clip'), changes.volume !== undefined ? 'level:' + id : changes.placement ? 'placement:' + id : undefined);
   }
 
   function setMaster(master) {
     scenePlayer.current?.setMaster(master);
-    if (!projectLock.current) setMix((previous) => ({ ...previous, master }));
+    if (!projectLock.current) setMix((previous) => ({ ...previous, master }), 'Master level', 'master');
   }
 
   async function togglePlayback() {
@@ -219,6 +307,7 @@ export default function useStudio() {
 
   async function addSound(sound) {
     if (projectLock.current) return;
+    stopPatternPreview();
     const current = mixRef.current;
     if (current.tracks.some((track) => track.id === sound.id)) return;
     if (current.sources.some((source) => source.id === sound.id)) return addSourceClip(sound.id);
@@ -230,13 +319,13 @@ export default function useStudio() {
       catch (error) { if (alive.current) setNotice(error.message); return; }
     }
     if (alive.current && !projectLock.current) setMix((previous) => previous.tracks.some((item) => item.id === track.id) || previous.sources.length >= MAX_TRACKS || previous.tracks.length >= MAX_CLIPS
-      ? previous : { ...previous, sources: [...previous.sources, { id: sound.id, catalogId: sound.id, name: sound.name, role: sound.role }], tracks: [...previous.tracks, { ...track, sourceId: sound.id }] });
+      ? previous : { ...previous, sources: [...previous.sources, { id: sound.id, catalogId: sound.id, name: sound.name, role: sound.role }], tracks: [...previous.tracks, { ...track, sourceId: sound.id }] }, 'Add library sound');
   }
 
   async function importFiles(selected, role) {
     if (importLock.current || projectLock.current || !selected.length) return;
-    stopScene();
-    importLock.current = true;
+    stopPreview();
+    importLock.current = true;beginEditGesture('import');
     setImporting(true);
     setNotice('');
     const player = engine.current;
@@ -256,7 +345,7 @@ export default function useStudio() {
           catch { if (alive.current) setStorageNotice('An imported sound could not be saved. It is available in this tab; keep the original file to import again.'); }
           if (!alive.current || player.disposed) return;
           files.current[sourceId(track)] = file;
-          setMix((previous) => ({ ...previous, sources: [...previous.sources, { id, catalogId: null, name: file.name, role }], tracks: [...previous.tracks, { ...track, sourceId: id }] }));
+          setMix((previous) => ({ ...previous, sources: [...previous.sources, { id, catalogId: null, name: file.name, role }], tracks: [...previous.tracks, { ...track, sourceId: id }] }), 'Import audio', 'import');
           imported += 1;
           slots -= 1;
         } catch (error) {
@@ -266,7 +355,7 @@ export default function useStudio() {
       }
       if (alive.current) setNotice(errors.length ? errors.join(' ') : imported + (imported === 1 ? ' sound added to your mix.' : ' sounds added to your mix.'));
     } finally {
-      importLock.current = false;
+      importLock.current = false;endEditGesture('import');
       if (alive.current) setImporting(false);
     }
   }
@@ -279,7 +368,7 @@ export default function useStudio() {
       if (editorId === id) setEditorId(null);
       engine.current.forget(id);
       const next = { ...mixRef.current, tracks: mixRef.current.tracks.filter((track) => track.id !== id) };
-      changeMix(next);
+      changeMix(next, 'Remove clip');
       setDetails((previous) => { const copy = { ...previous }; delete copy[id]; return copy; });
       if (!storageBlocked) persistWorkspace(next, activeProjectId);
     } finally {
@@ -296,6 +385,7 @@ export default function useStudio() {
   }
 
   function focusClip(id) {
+    selectClip(id);
     requestAnimationFrame(() => {
       const row = document.querySelector('[data-clip-id="' + CSS.escape(id) + '"]');
       row?.scrollIntoView({ block: 'center' });row?.querySelector('button')?.focus({ preventScroll: true });
@@ -303,6 +393,7 @@ export default function useStudio() {
   }
 
   function focusRhythm(id) {
+    selectClip(id);
     requestAnimationFrame(() => {
       const row = document.querySelector('[data-rhythm-id="' + CSS.escape(id) + '"]');
       row?.scrollIntoView({ block: 'center' });row?.querySelector('.sequence-steps button')?.focus({ preventScroll: true });
@@ -311,6 +402,7 @@ export default function useStudio() {
 
   async function addSourceClip(id) {
     if (projectLock.current || importLock.current || booting) return;
+    stopPatternPreview();
     projectLock.current = true;setProjectBusy(true);
     try {
       const current = mixRef.current;ensureClipSlot(current);
@@ -322,7 +414,7 @@ export default function useStudio() {
         placement: { start: current.arrangement.enabled && elapsed < current.arrangement.duration - .05 ? elapsed : 0, end: null, fadeIn: 0, fadeOut: 0 } };
       await engine.current.load(withSources([track])[0], files.current[id]);
       if (!alive.current) return;
-      changeMix({ ...current, tracks: [...current.tracks, track] });focusClip(track.id);
+      changeMix({ ...current, tracks: [...current.tracks, track] }, 'Add clip');focusClip(track.id);
       setNotice('Added a new clip from ' + source.name + '. Its audio is shared; edits are independent.');
     } catch (error) { if (alive.current) setNotice(error.message); }
     finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
@@ -331,12 +423,12 @@ export default function useStudio() {
   async function removeSource(id) {
     if (projectLock.current || importLock.current || booting) return;
     const current = mixRef.current;
-    if (current.tracks.some((track) => sourceId(track) === id)) { setNotice('Remove the clips using this source first.');return; }
+    if (current.tracks.some((track) => sourceId(track) === id) || patternSourceCount(current, id)) { setNotice('Remove the clips and saved patterns using this source first.');return; }
     projectLock.current = true;setProjectBusy(true);
     try {
       const next = { ...current, sources: current.sources.filter((source) => source.id !== id) };
       for (const [clipId, key] of engine.current.sourceKeys) if (key === id) engine.current.forget(clipId);
-      delete files.current[id];changeMix(next);
+      changeMix(next, 'Remove source');
       if (!storageBlocked && persistWorkspace(next, activeProjectId)) await reclaim([id], next);
     } finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
   }
@@ -356,7 +448,7 @@ export default function useStudio() {
         : duplicateClip(current, id, 'custom-clip-' + crypto.randomUUID());
       // Resume/seek against a fresh node schedule; keep the cursor and play/pause intent.
       const position = player.position(), resume = statusRef.current === 'playing';
-      changeMix(next);
+      changeMix(next, action === 'split' ? 'Split clip' : 'Duplicate clip');
       await rescheduleMix(next, position, resume);
       setElapsed(player.position());
       const newClip = next.tracks.find((item) => !current.tracks.some((old) => old.id === item.id));
@@ -378,7 +470,7 @@ export default function useStudio() {
         closeClip();
         const loaded = await readSavedMix(data.id);
         if (!alive.current || player.disposed) return false;
-        const oldIds = [...referencedAudio(mixRef.current, [])];
+        const oldIds = [...new Set([...referencedAudio(mixRef.current, []), ...history.current.audioIds()])];
         resetLoop(arrangementMetadata(loaded.project.mix.arrangement).duration);
         player.restart();
         player.clearAudio();
@@ -387,7 +479,7 @@ export default function useStudio() {
         setNotice('');
         files.current = loaded.files;
         const next = validateMix(loaded.project.mix);
-        changeMix(next);
+        clearHistory();changeMix(next, undefined, undefined, false);setActivePatternId(next.patterns?.[0]?.id || null);
         setActiveProjectId(loaded.project.id);
         setStorageBlocked(false);
         setSavedNotice('Opened “' + loaded.project.name + '”. Press Play to listen.');
@@ -418,28 +510,34 @@ export default function useStudio() {
     }
   }
 
+  function editableTrack(id, current = mixRef.current) { return current.tracks.find(track => track.id === id) || current.patterns?.flatMap(pattern => pattern.rows).find(row => row.id === id); }
+
   function editPattern(id, change) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
-    const track = mixRef.current.tracks.find((item) => item.id === id);
+    const track = editableTrack(id);
     if (!track) return;
     if (engine.current.previewPosition()?.loading) stopPreview();
-    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((item) => item.id === id
-      ? { ...item, rhythm: { ...rhythmMetadata(item), initialized: true }, sequence: change(sequenceMetadata(item)) } : item) }));
+    updateTrack(id, { rhythm: { ...rhythmMetadata(track), initialized: true }, sequence: change(sequenceMetadata(track)) });
     setNotice('');
   }
 
   function setBpm(value) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
-    const bpm = validBpm(value);
-    if (bpm === (mixRef.current.bpm ?? DEFAULT_BPM)) return;
+    const bpm = validBpm(value), current = mixRef.current;
+    if (bpm === (current.bpm ?? DEFAULT_BPM)) return;
     stopPreview();
-    setMix((previous) => ({ ...previous, bpm }));
-    setNotice('');
+    if (current.tracks.some(track => track.patternBlock)) {
+      try {
+        const next = retimeBlocks(current, bpm), position = engine.current.position();
+        engine.current.pause();changeMix(next, 'Change speed');void rescheduleMix(next, position, false);
+        setNotice('Speed updated. Rhythm sections keep their bars; audio clips keep their times. Press Play to listen.');
+      } catch (error) { setNotice(error.message); }
+    } else { setMix(previous => ({ ...previous, bpm }), 'Change speed');setNotice(''); }
   }
 
   async function createRhythm(id) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
-    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    const track = withSources([editableTrack(id)].filter(Boolean))[0];
     if (!track) return;
     importLock.current = true;
     setRhythmBusy(true);
@@ -456,7 +554,7 @@ export default function useStudio() {
         ...enableRhythmTrack(prepared, buffer.duration),
         solo: first && mixRef.current.tracks.some((layer) => layer.solo) ? true : item.solo,
       } : item) };
-      changeMix(next);
+      changeMix(next, 'Enable rhythm');
       engine.current.setTracks(withSources(next.tracks));
       if (first && !engine.current.playing) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
       if (!next.master) setNotice('Your rhythm is ready. Raise Master volume to hear it.');
@@ -490,7 +588,7 @@ export default function useStudio() {
       // Three editable clips share one recording, one persisted WAV and one decoded buffer.
       files.current[source.id] = file;
       const next = { ...mixRef.current, sources: [...mixRef.current.sources, source], tracks: [...mixRef.current.tracks, ...added] };
-      changeMix(next); committed = true; focusRhythm(added[0].id);
+      changeMix(next, 'Add drum beat'); committed = true; focusRhythm(added[0].id);
       const position = engine.current.position();
       await rescheduleMix(next, next.arrangement.enabled && position >= next.arrangement.duration ? 0 : position, true);
       setNotice('Drum beat added. Tap lit steps to remove hits, or dark steps to add them. Existing clips are kept.' + (!next.master ? ' Raise Master to hear it.' : ''));
@@ -504,7 +602,7 @@ export default function useStudio() {
   async function previewSample(id) {
     if (preview?.id === id && preview.kind !== 'pattern') { stopPreview(); return; }
     if (projectLock.current || importLock.current || booting) return;
-    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    const track = withSources([editableTrack(id)].filter(Boolean))[0];
     if (!track) return;
     try {
       const buffer = await engine.current.load(track, files.current[sourceId(track)]);
@@ -517,18 +615,18 @@ export default function useStudio() {
   function resetLevels() {
     if (projectLock.current) return;
     setMix((previous) => ({ ...previous, master: 75, tracks: previous.tracks.map((track) => ({ ...track,
-      volume: SOUNDS.find((sound) => sound.id === track.catalogId)?.volume ?? 50, muted: false, solo: false })) }));
+      volume: SOUNDS.find((sound) => sound.id === track.catalogId)?.volume ?? 50, muted: false, solo: false })) }), 'Reset levels');
   }
 
   function applyBlend(volumes) {
     if (projectLock.current) return;
     setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.catalogId
-      ? { ...track, volume: volumes[track.catalogId], muted: volumes[track.catalogId] === 0, solo: false } : track) }));
+      ? { ...track, volume: volumes[track.catalogId], muted: volumes[track.catalogId] === 0, solo: false } : track) }), 'Apply base blend');
   }
 
   function stopPreview() {
     stopScene();
-    engine.current?.stopPreview();
+    engine.current?.stopPreview();stopPatternPreview();
     setPreview(null);
   }
 
@@ -539,11 +637,11 @@ export default function useStudio() {
 
   async function openClip(id, location = 'mixer') {
     if (projectLock.current || importLock.current || booting) return;
-    stopPreview();
+    stopPreview();selectClip(id);
     setEditorId(id);
     setEditorLocation(location);
     setNotice('');
-    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    const track = withSources([editableTrack(id)].filter(Boolean))[0];
     if (!track) return;
     try { await engine.current.load(track, files.current[sourceId(track)]); }
     catch (error) { if (alive.current) setNotice(error.message); }
@@ -551,7 +649,7 @@ export default function useStudio() {
 
   async function previewClip(id, start, end, loop) {
     if (projectLock.current || importLock.current) return;
-    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    const track = withSources([editableTrack(id)].filter(Boolean))[0];
     if (!track) return;
     try {
       await engine.current.preview(track, files.current[sourceId(track)], start, end, loop);
@@ -566,19 +664,22 @@ export default function useStudio() {
     if (location === 'arrangement') {
       const current = mixRef.current, position = engine.current.position(), resume = statusRef.current === 'playing';
       const next = { ...current, tracks: current.tracks.map((track) => track.id === id ? { ...track, ...(reset ? { clipStart: 0, clipEnd: null } : region), loop, sourceOffset: undefined, gainEnvelope: undefined } : track) };
-      closeClip();changeMix(next);
+      closeClip();changeMix(next, 'Choose audio range');
       try { await rescheduleMix(next, position, resume); }
       catch (error) { if (alive.current) setNotice(error.message); }
       return;
     }
     if (location === 'sequencer') {
       const current = mixRef.current, position = engine.current.position(), resume = statusRef.current === 'playing';
-      const next = { ...current, tracks: current.tracks.map((track) => {
+      const edit = (track) => {
         if (track.id !== id) return track;
         const edited = { ...track, rhythm: { ...rhythmMetadata(track), sampleStart: region.clipStart, sampleEnd: region.clipEnd } };
         return rhythmMetadata(track).initialized ? edited : { ...enableRhythmTrack(edited, duration), solo: track.solo || current.tracks.some((item) => item.solo) };
-      }) };
-      closeClip(); changeMix(next); focusRhythm(id);
+      };
+      const owner = current.patterns?.find(pattern => pattern.rows.some(row => row.id === id));
+      const next = owner ? { ...current, patterns: current.patterns.map(pattern => pattern.id === owner.id ? { ...pattern, rows: pattern.rows.map(edit) } : pattern) }
+        : { ...current, tracks: current.tracks.map(edit) };
+      closeClip(); changeMix(next, 'Choose rhythm sample'); focusRhythm(id);
       try { await rescheduleMix(next, position, resume); }
       catch (error) { if (alive.current) setNotice(error.message); return; }
       setNotice('Sample ready. Hear rhythm previews this row; Play full mix includes your other clips.');
@@ -599,7 +700,7 @@ export default function useStudio() {
     engine.current.restart();
     setElapsed(0);
     setCurrentStep(null);
-    setMix((previous) => ({ ...previous, arrangement: { ...arrangementMetadata(previous.arrangement), duration } }));
+    setMix((previous) => ({ ...previous, arrangement: { ...arrangementMetadata(previous.arrangement), duration } }), 'Change arrangement length');
     setNotice('Arrangement length updated. Press Play arrangement to listen from the beginning.');
     return true;
   }
@@ -633,7 +734,7 @@ export default function useStudio() {
     const duration = validateLength(config.duration, mixRef.current.tracks);
     const next = { ...mixRef.current, arrangement: { enabled: true, duration } };
     engine.current.restart();
-    changeMix(next);
+    changeMix(next, undefined, undefined, false);
     setNotice('');
     try { await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement); }
     catch (error) { if (alive.current) setNotice(error.message); }
@@ -649,13 +750,14 @@ export default function useStudio() {
       engine.current.setArrangement(next.arrangement);
       if (loopRef.current.enabled && (value < loopRef.current.start || value >= loopRef.current.end)) storeLoop({ ...loopRef.current, enabled: false });
       const position = engine.current.seek(value);
-      changeMix(next);
+      changeMix(next, undefined, undefined, false);
       setElapsed(position);setCurrentStep(null);setPreview(null);setNotice('');
       if (play && position < duration) await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
     } catch (error) { if (alive.current) setNotice(error.message); }
   }
 
   async function seekPlayback(value) {
+    stopPatternPreview();
     if (projectLock.current || importLock.current || booting || !mixRef.current.tracks.length) return false;
     const current = mixRef.current;
     const resume = statusRef.current === 'playing' || (statusRef.current === 'loading' && (seekIntent.current?.resume ?? true));
@@ -705,7 +807,7 @@ export default function useStudio() {
       const wasLoop = loopRef.current.enabled;
       engine.current.pause();engine.current.setArrangement(next.arrangement);storeLoop(region);
       if (!wasLoop || engine.current.position() < region.start || engine.current.position() >= region.end) engine.current.seek(region.start);
-      changeMix(next);setPreview(null);setNotice('');
+      changeMix(next, undefined, undefined, false);setPreview(null);setNotice('');
       await engine.current.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
     } catch (error) { if (alive.current) setNotice(error.message); }
   }
@@ -724,6 +826,7 @@ export default function useStudio() {
   }
 
   async function exportArrangement(name) {
+    stopPatternPreview();
     if (projectLock.current || importLock.current || booting || !mixRef.current.tracks.length) return;
     const controller = new AbortController();exportJob.current = controller;
     projectLock.current = true;setProjectBusy(true);
@@ -758,21 +861,22 @@ export default function useStudio() {
 
   function clearSolos() {
     if (projectLock.current) return;
-    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => ({ ...track, solo: false })) }));
+    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => ({ ...track, solo: false })) }), 'Clear solos');
   }
 
   function freeMix() {
+    if (mixRef.current.tracks.some(track => track.patternBlock)) { setNotice('Rhythm sections use the timeline. Remove those sections to return to Free mix. Your patterns stay in Rhythm.');return; }
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
     resetLoop(arrangementMetadata(mixRef.current.arrangement).duration);
     engine.current.restart();
     setElapsed(0);
     setCurrentStep(null);
-    setMix((previous) => ({ ...previous, arrangement: { ...arrangementMetadata(previous.arrangement), enabled: false } }));
+    setMix((previous) => ({ ...previous, arrangement: { ...arrangementMetadata(previous.arrangement), enabled: false } }), undefined, undefined, false);
     setNotice('Free mix restored. Your layer timings have been kept for the arrangement.');
   }
 
   async function loadTrackInfo(id) {
-    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    const track = withSources([editableTrack(id)].filter(Boolean))[0];
     if (!track) return;
     try { await engine.current.load(track, files.current[sourceId(track)]); }
     catch (error) { if (alive.current) setNotice(error.message); }
@@ -780,17 +884,115 @@ export default function useStudio() {
   const waveformFor = useCallback((id, start, end, bins = 600) => engine.current?.waveformFor(id, start, end, bins) || [], []);
   const findSound = useCallback((id, from, length) => engine.current?.findSound(id, from, length), []);
   async function previewPattern(id) {
+    stopPatternPreview();
     if (preview?.id === id && preview.kind === 'pattern') { stopPreview(); return; }
     if (projectLock.current || importLock.current || booting) return;
-    const track = withSources(mixRef.current.tracks).find((item) => item.id === id);
+    const track = withSources([editableTrack(id)].filter(Boolean))[0];
     if (!track) return;
     try { await engine.current.previewPattern(track, files.current[sourceId(track)], mixRef.current.bpm); }
     catch (error) { engine.current.stopPreview(); if (alive.current) setNotice(error.message); }
   }
   function setTailMode(id, tailMode) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
-    stopPreview();
-    setMix((previous) => ({ ...previous, tracks: previous.tracks.map((track) => track.id === id ? { ...track, rhythm: { ...rhythmMetadata(track), tailMode } } : track) }));
+    const track = editableTrack(id);if (!track) return;
+    stopPreview();updateTrack(id, { rhythm: { ...rhythmMetadata(track), tailMode } });
+  }
+
+  function stopPatternPreview() {
+    const audition = patternAudition.current;
+    patternAudition.current = null;
+    audition?.player.dispose();audition?.releaseBuffers();
+    if (alive.current) setPatternPreview(null);
+  }
+
+  async function hearPattern(id) {
+    if (patternAudition.current?.id === id) { stopPatternPreview();return; }
+    if (projectLock.current || importLock.current || booting) return;
+    const pattern = mixRef.current.patterns?.find(item => item.id === id);
+    if (!pattern) return;
+    stopPreview();engine.current.pause();setElapsed(engine.current.position());seekIntent.current = null;
+    const player = new AudioEngine({ onError: error => { stopPatternPreview();setNotice(error.message); }, onState: state => {
+      if (alive.current && patternAudition.current?.player === player) setPatternPreview({ id, status: state, step: null });
+    } });
+    const audition = { id, player, releaseBuffers: engine.current.retainBuffers(pattern.rows.map(row => row.id)) };patternAudition.current = audition;
+    setPatternPreview({ id, status: 'loading', step: null });setNotice('');
+    try {
+      // Load through the workspace cache, then lend references to the preview engine.
+      // Multiple rows or sections never decode another copy of the same recording.
+      for (const track of withSources(pattern.rows)) {
+        const buffer = await engine.current.load(track, files.current[sourceId(track)]);
+        if (!alive.current || patternAudition.current !== audition) return;
+        player.buffers.set(track.id, buffer);player.sourceKeys.set(track.id, sourceId(track));
+      }
+      player.memory = [...new Set(player.buffers.values())].reduce((sum, buffer) => sum + buffer.length * buffer.numberOfChannels * 4, 0);
+      const current = mixRef.current.patterns?.find(item => item.id === id);
+      if (current && patternAudition.current === audition) await player.play(withSources(current.rows), {}, mixRef.current.master, mixRef.current.bpm, { enabled: false, duration: 30 });
+    } catch (error) { if (patternAudition.current === audition) { stopPatternPreview();if (alive.current) setNotice(error.message); } }
+  }
+
+  function selectPattern(id) {
+    if (projectLock.current || importLock.current) return;
+    closeClip();setActivePatternId(id);
+    const pattern = mixRef.current.patterns?.find(item => item.id === id);
+    selectClip(pattern?.rows[0]?.id || null);
+  }
+
+  function editPatternBank(action, id, value) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    try {
+      const current = mixRef.current;
+      let next;
+      if (action === 'capture') next = capturePattern(current);
+      else if (action === 'copy') next = copyRhythmPattern(current, id);
+      else if (action === 'rename') next = { ...current, patterns: current.patterns.map(pattern => pattern.id === id ? { ...pattern, name: patternName(value) } : pattern) };
+      else next = { ...current, patterns: current.patterns.filter(pattern => pattern.id !== id) };
+      closeClip();changeMix(next, action === 'capture' ? 'Keep pattern A' : action === 'copy' ? 'Make pattern variation' : action === 'rename' ? 'Rename pattern' : 'Remove saved pattern');
+      const selected = action === 'capture' || action === 'copy' ? next.patterns.at(-1) : next.patterns.find(pattern => pattern.id === id);
+      setActivePatternId(selected?.id || null);selectClip(selected?.rows[0]?.id || null);
+      setNotice(action === 'remove' ? 'Pattern removed. Placed sections keep their own steps and samples.' : 'Pattern ready. Add it to Arrangement to build a section of your mix.');
+      return true;
+    } catch (error) { setNotice(error.message);return false; }
+  }
+
+  async function addPatternToArrangement(id, startBar, bars) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    try {
+      const current = mixRef.current, position = engine.current.position(), resume = statusRef.current === 'playing';
+      const next = placePattern(current, id, startBar, bars);
+      closeClip();changeMix(next, 'Add rhythm section');
+      const block = next.tracks.at(-1).patternBlock;
+      selectClip(block.id);
+      await rescheduleMix(next, position, resume);
+      setNotice('Added ' + block.name + '. Each section keeps a copy of its steps and samples; changing A/B affects future additions.');
+      window.location.hash = '/arrangement';
+      return true;
+    } catch (error) { setNotice(error.message);return false; }
+  }
+
+  function updatePatternSection(id, changes, action) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    try {
+      const current = mixRef.current;
+      const next = action === 'copy' ? copyBlock(current, id) : action === 'remove'
+        ? { ...current, tracks: current.tracks.filter(track => track.patternBlock?.id !== id) } : editBlock(current, id, changes);
+      stopPreview();changeMix(next, action === 'copy' ? 'Duplicate rhythm section' : action === 'remove' ? 'Remove rhythm section' : 'Edit rhythm section', changes?.volume !== undefined ? 'level:' + id : 'placement:' + id);
+      selectClip(action === 'copy' ? next.tracks.at(-1).patternBlock.id : id);
+      return true;
+    } catch (error) { setNotice(error.message);return false; }
+  }
+
+  function soloPatternSection(id) {
+    if (projectLock.current || importLock.current || booting) return;
+    const rows = mixRef.current.tracks.filter(track => track.patternBlock?.id === id);
+    const solo = !rows.every(row => row.solo);
+    setMix(current => ({ ...current, tracks: current.tracks.map(track => track.patternBlock?.id === id ? { ...track, solo } : track) }), 'Solo rhythm section');
+  }
+
+  function placePatternSection(id, value) {
+    const unit = barSeconds(mixRef.current.bpm);
+    const startBar = Math.max(0, Math.round(value.start / unit));
+    const endBar = Math.max(startBar + 1, Math.round(value.end / unit));
+    return updatePatternSection(id, { startBar, bars: endBar - startBar });
   }
 
   function stopScene() {
@@ -799,6 +1001,7 @@ export default function useStudio() {
   }
 
   async function hearScene(id) {
+    stopPatternPreview();
     if (scenePreview?.id === id) { stopScene(); return; }
     if (projectLock.current || importLock.current || booting) return;
     stopScene();seekIntent.current = null;engine.current.pause();setElapsed(engine.current.position());
@@ -829,11 +1032,11 @@ export default function useStudio() {
     projectLock.current = true;setProjectBusy(true);
     try {
       const next = validateMix(sceneMix(id));
-      const oldIds = [...referencedAudio(mixRef.current, [])];
+      const oldIds = [...new Set([...referencedAudio(mixRef.current, []), ...history.current.audioIds()])];
       closeClip();engine.current.restart();
       engine.current.clearAudio();
       resetLoop(next.arrangement.duration);setElapsed(0);setDetails({});files.current = {};
-      changeMix(next);setActiveProjectId(null);setStorageBlocked(false);
+      clearHistory();changeMix(next, undefined, undefined, false);setActivePatternId(null);setActiveProjectId(null);setStorageBlocked(false);
       setNotice('Started ' + SCENES.find((scene) => scene.id === id).name + '. Press Play, or open Arrangement to shape its layers.');
       if (persistWorkspace(next, null)) await reclaim(oldIds, next);
       return true;
@@ -844,7 +1047,7 @@ export default function useStudio() {
   async function transferAction(action, input) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
     projectLock.current = true;setProjectBusy(true);
-    stopScene();
+    stopPreview();
     const controller = new AbortController();transferJob.current = { controller, committing: false };
     const progress = (value) => { if (alive.current) setTransfer({ active: true, ...value }); };
     progress({ stage: action === 'backup' ? 'Preparing project' : 'Checking project', progress: 0 });
@@ -924,7 +1127,9 @@ export default function useStudio() {
 
   const activeProject = savedMixes.find((project) => project.id === activeProjectId);
   const dirty = activeProject ? !sameMix(mix, activeProject.mix) : mix.tracks.length > 0;
-  return { ...mix, seekPlayback, loopSection, setLoopSection, playLoop, disableLoop, exportState, exportArrangement, cancelExport, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
+  return { ...mix, activePatternId, patternPreview, stopPatternPreview, hearPattern, selectPattern,
+    keepPattern: () => editPatternBank('capture'), copyPattern: id => editPatternBank('copy', id), renamePattern: (id, name) => editPatternBank('rename', id, name), removePattern: id => editPatternBank('remove', id),
+    addPatternToArrangement, updatePatternSection, placePatternSection, soloPatternSection, historyStatus: history.current.status(), undo: () => restoreEdit('undo'), redo: () => restoreEdit('redo'), beginEditGesture, endEditGesture, selectedClipId, selectClip, seekPlayback, loopSection, setLoopSection, playLoop, disableLoop, exportState, exportArrangement, cancelExport, loadTrackInfo, waveformFor, findSound, previewPattern, setTailMode, arrangement: arrangementMetadata(mix.arrangement), setArrangementLength, setPlacement, playArrangement, seekArrangement, clearSolos, freeMix, bpm: mix.bpm ?? DEFAULT_BPM, currentStep, tempo, status, elapsed, details, notice, storageNotice, booting, importing,
     savedMixes, activeProject, dirty, projectBusy, projectsBlocked, savedNotice,
     transfer, restoreInfo, discardProjectFile, cancelTransfer, downloadProject: () => transferAction('backup'),
     inspectProjectFile: (file) => transferAction('inspect', file), restoreProject: (name) => transferAction('restore', name),

@@ -1,3 +1,4 @@
+import { patternSourceCount } from '../lib/patternSections.js';
 import { MAX_CLIPS, MAX_TRACKS } from '../data/sounds.js';
 import { sourceId } from '../lib/audioSources.js';
 import './SourcePool.css';
@@ -8,9 +9,10 @@ export default function SourcePool({ studio }) {
     <p>Add another clip from a recording you already have.</p>
     <ul>{studio.sources.map((source) => {
       const count = studio.tracks.filter((track) => sourceId(track) === source.id).length;
-      return <li key={source.id}><div><strong title={source.name}>{source.name}</strong><span>{count} {count === 1 ? 'clip' : 'clips'} · {source.role}</span></div>
+      const patterns = patternSourceCount(studio, source.id);
+      return <li key={source.id}><div><strong title={source.name}>{source.name}</strong><span>{count} {count === 1 ? 'clip' : 'clips'}{patterns ? ' · ' + patterns + ' saved pattern(s)' : ''} · {source.role}</span></div>
         <div className="source-pool-actions"><button type="button" disabled={studio.busy || studio.tracks.length >= MAX_CLIPS} aria-label={'Add clip from ' + source.name} onClick={() => studio.addSourceClip(source.id)}>Add clip</button>
-          {!count && <button type="button" disabled={studio.busy} aria-label={'Remove unused source ' + source.name} onClick={() => studio.removeSource(source.id)}>Remove source</button>}</div></li>;
+          {!count && !patterns && <button type="button" disabled={studio.busy} aria-label={'Remove unused source ' + source.name} onClick={() => studio.removeSource(source.id)}>Remove source</button>}</div></li>;
     })}</ul>
     {!studio.sources.length && <p>Import a recording or add a library sound in Studio.</p>}
     <p className="source-pool-note">{studio.tracks.length}/{MAX_CLIPS} clips · recordings stay here when a clip is removed.</p>

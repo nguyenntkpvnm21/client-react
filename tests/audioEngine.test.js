@@ -207,3 +207,17 @@ test('decoder failure releases the load queue so another layer can still load', 
   const next = engine.load(track('valid'), file);await Promise.all([broken, next]);
   assert.deepEqual([...engine.buffers.keys()], ['valid']);assert.equal(engine.loadQueue, null);assert.equal(engine.pending.size, 0);engine.dispose();
 });
+
+test('buffers lent to whole-pattern audition stay counted until the preview releases them', async () => {
+  const context = fakeContext();let size = 256 * 1024 * 1024;
+  context.decodeAudioData = async () => ({ ...buffer(), length: size / 4 });
+  const engine = new AudioEngine({ createContext: () => context });
+  await engine.load(track('bank-row'), file);size = 768 * 1024 * 1024;await engine.load(track('active'), file);
+  engine.setTracks([track('active'), track('next-bank-row')]);
+  const release = engine.retainBuffers(['bank-row', 'next-bank-row']);size = 128 * 1024 * 1024;
+  await assert.rejects(engine.load(track('next-bank-row'), file), /exceed 1 GiB/);
+  assert.equal(engine.buffers.has('bank-row'), true);assert.equal(engine.memory, 1024 * 1024 * 1024);
+  release();await engine.load(track('next-bank-row'), file);
+  assert.equal(engine.buffers.has('bank-row'), false);assert.equal(engine.memory, 896 * 1024 * 1024);
+  engine.dispose();assert.equal(engine.bufferLeases.size, 0);
+});

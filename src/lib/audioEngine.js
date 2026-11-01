@@ -59,6 +59,7 @@ export class AudioEngine {
     this.scheduler = null;
     this.context = null;
     this.buffers = new Map();
+    this.bufferLeases = new Set();
     this.pending = new Map();
     this.sourceKeys = new Map();
     this.loadQueue = null;
@@ -162,7 +163,7 @@ export class AudioEngine {
     };
   }
 
-  setTracks(tracks) {
+  setTracks(tracks, previewTrack) {
     for (const track of tracks) {
       this.sourceKeys.set(track.id, sourceId(track));
       if (this.buffers.has(track.id)) continue;
@@ -192,7 +193,7 @@ export class AudioEngine {
     this.maybeFinish();
     if (this.patternPreview) {
       const pattern = this.patternPreview;
-      const track = tracks.find((item) => item.id === pattern.id);
+      const track = previewTrack || tracks.find((item) => item.id === pattern.id);
       if (!track) this.stopPreview();
       else {
         pattern.end = pattern.when + auditionDuration(track, this.buffers.get(track.id), pattern.bpm);
@@ -251,6 +252,7 @@ export class AudioEngine {
         // Never evict a layer in the mix or an isolated preview to make room.
         const retained = new Set(this.tracks.map((item) => item.id));
         retained.add(this.previewId);
+        for (const lease of this.bufferLeases) for (const id of lease) retained.add(id);
         for (const id of this.buffers.keys()) if (!retained.has(id) && !this.nodes.has(id)) {
           this.forget(id);
         }
@@ -390,9 +392,16 @@ export class AudioEngine {
     this.memory = [...new Set(this.buffers.values())].reduce((sum, buffer) => sum + buffer.length * buffer.numberOfChannels * 4, 0);
   }
 
+  retainBuffers(ids) {
+    // Another audition engine borrows these PCM references; eviction must still count them.
+    const lease = new Set(ids);
+    this.bufferLeases.add(lease);
+    return () => this.bufferLeases.delete(lease);
+  }
+
   clearAudio() {
     for (const operation of this.pending.values()) operation.controller.abort();
-    this.buffers.clear();this.sourceKeys.clear();this.memory = 0;
+    this.buffers.clear();this.sourceKeys.clear();this.bufferLeases.clear();this.memory = 0;
   }
 
   waveformFor(id, start, end, bins) {
