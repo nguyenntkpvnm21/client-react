@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AudioEngine } from '../src/lib/audioEngine.js';
-import { duplicateClip, placedClip, splitClip, trimmedClip } from '../src/lib/clipInstances.js';
+import { duplicateClip, eventClip, placedClip, splitClip, trimmedClip } from '../src/lib/clipInstances.js';
 import { referencedAudio, changeProject } from '../src/lib/savedMixes.js';
 import { defaultMix, serializeMix, validateMix } from '../src/lib/studioState.js';
 import { createProjectBackup, inspectProjectBackup, restoredProject } from '../src/lib/projectBackup.js';
@@ -25,6 +25,35 @@ function setup() {
   return { context, sources, gains, engine: new AudioEngine({ createContext: () => context }) };
 }
 const file = { arrayBuffer: async () => new ArrayBuffer(4) };
+
+test('selected audio becomes an independent one-shot event at the mix cursor without changing its original', () => {
+  const current = mix(clip({ loop: true, sequence: { enabled: true, steps: Array(16).fill(true) } }));
+  const before = structuredClone(current);
+  const next = eventClip(current, source.id, 3.2, 3.7, 8.5, 20, 'custom-event');
+  assert.deepEqual(current, before);assert.deepEqual(next.sources, before.sources);
+  const event = next.tracks.at(-1);
+  assert.equal(event.sourceId, source.id);assert.equal(event.loop, false);
+  assert.equal(event.clipStart, 3.2);assert.equal(event.clipEnd, 3.7);
+  near(event.placement.start, 8.5);near(event.placement.end, 9);
+  const restored = validateMix(serializeMix(next));
+  assert.equal(restored.tracks[1].sequence.enabled, false);assert.equal(restored.tracks[1].sourceOffset, undefined);
+  assert.deepEqual(restored.tracks[1].placement, event.placement);
+  const tiny = eventClip(current, source.id, 0, .02, 1, .02, 'custom-tiny-event');
+  const tinySaved = validateMix(serializeMix(tiny)).tracks.at(-1);
+  near(tinySaved.placement.start, 1);near(tinySaved.placement.end, 1.05);near(tinySaved.clipEnd, .02);
+});
+
+test('sound events extend the arrangement only when needed and reject invalid or overflowing ranges atomically', () => {
+  const current = mix(), before = structuredClone(current);
+  const next = eventClip(current, source.id, 2, 4, 19, 20, 'custom-event');
+  assert.equal(next.arrangement.duration, 21);assert.equal(next.arrangement.enabled, true);
+  for (const [start, end, at] of [[4, 2, 1], [0, 21, 1], [2, 4, -1], [2, 4, Infinity], [2, 4, 299]]) {
+    assert.throws(() => eventClip(current, source.id, start, end, at, 20, 'custom-invalid'));
+  }
+  assert.throws(() => eventClip(current, 'custom-missing', 2, 4, 0, 20, 'custom-invalid'));
+  assert.throws(() => eventClip({ ...current, tracks: Array(MAX_CLIPS).fill(clip()) }, source.id, 2, 4, 0, 20, 'custom-over'), /32 clips/);
+  assert.deepEqual(current, before);
+});
 
 test('legacy workspaces gain a source registry without changing clip controls or source identities', () => {
   const legacy = { version: 1, tracks: [{ ...source, volume: 37, muted: true, loop: false }], master: 62 };

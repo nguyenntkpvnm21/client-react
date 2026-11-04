@@ -27,19 +27,21 @@ export default function SavedMixes({ studio }) {
     else void studio.openMix(project.id);
   }
 
+  const saveForm = <form className="save-mix-form" onSubmit={save}>
+    <label htmlFor="new-mix-name">Mix name</label><input id="new-mix-name" type="text" value={name} onChange={(event) => setName(event.target.value)}
+      placeholder="e.g. Rainy Evening" maxLength={MAX_MIX_NAME} required disabled={disabled} />
+    <button type="submit" className="saved-button" disabled={disabled || studio.savedMixes.length >= MAX_SAVED_MIXES}><Icon name="plus" size={14} />{studio.activeProject ? 'Save new copy' : 'Save as new'}</button>
+  </form>;
+
   return <section className="saved-panel panel" id="saved-mixes" aria-labelledby="saved-mixes-title"
     onKeyDown={(event) => { if (event.key === 'Escape' && !disabled) setPending(null); }}>
     <div className="section-heading"><div><p className="eyebrow">KEEP YOUR FAVORITES</p><h2 id="saved-mixes-title">Saved mixes</h2></div>
       <span className="count-pill">{studio.savedMixes.length}/{MAX_SAVED_MIXES}</span></div>
-    <p className="saved-description">Give your mix a name. Return to its sounds whenever you like.</p>
-    <form className="save-mix-form" onSubmit={save}>
-      <label htmlFor="new-mix-name">Mix name</label><input id="new-mix-name" type="text" value={name} onChange={(event) => setName(event.target.value)}
-        placeholder="e.g. Rainy Evening" maxLength={MAX_MIX_NAME} required disabled={disabled} />
-      <button type="submit" className="saved-button" disabled={disabled || studio.savedMixes.length >= MAX_SAVED_MIXES}><Icon name="plus" size={14} />Save as new</button>
-    </form>
+    <p className="saved-description">Keep named copies of your mix in this browser.</p>
     {studio.activeProject && <div className="saved-current"><span>Opened: <strong>{studio.activeProject.name}</strong></span>
-      <button type="button" className="saved-button" disabled={disabled || !studio.dirty} onClick={studio.updateSavedMix}>Save changes</button>
-      <p>{studio.dirty ? 'Your edits are not yet in this saved mix.' : 'This workspace matches the saved mix.'}</p></div>}
+      <button type="button" className="saved-button save-update" disabled={disabled || !studio.dirty} onClick={studio.updateSavedMix}>Save changes</button>
+      <p>{studio.dirty ? 'Your workspace has changes. Save changes to update this named mix.' : 'This named mix is up to date.'}</p></div>}
+    {studio.activeProject ? <details className="save-new-copy"><summary>Save another copy</summary>{saveForm}</details> : saveForm}
     {studio.booting ? <p className="saved-empty">Opening your saved mixes...</p>
       : !studio.savedMixes.length && !studio.projectsBlocked ? <p className="saved-empty">Your first saved mix starts here.</p> : null}
     <ul className="saved-list" aria-label="Saved mix collection">{studio.savedMixes.map((project) => {
@@ -62,7 +64,7 @@ export default function SavedMixes({ studio }) {
       </li>;
     })}</ul>
     {studio.savedNotice && <p className="saved-notice" role="status">{studio.savedNotice}</p>}
-    <p className="saved-footnote">Saved in this browser. Mixes share imported audio; no extra copy is made.</p>
+    <p className="saved-footnote">Your workspace is kept separately on this device. Named mixes change only when you save them.</p>
     <ProjectTransfer studio={studio} />
   </section>;
 }

@@ -5,6 +5,7 @@ import './App.css';
 import Arrangement from './components/Arrangement';
 import EditHistory from './components/EditHistory';
 import AudioImport from './components/AudioImport';
+import AudioImportDialog from './components/AudioImportDialog';
 import Icon from './components/Icon';
 import MixWorkspace from './components/MixWorkspace';
 import SoundLibrary from './components/SoundLibrary';
@@ -19,14 +20,14 @@ import './StudioPages.css';
 import './StudioTheme.css';
 import './BeginnerUi.css';
 import './EditHistory.css';
+import './WorkflowUi.css';
 
 const pageIcons = { studio: 'layers', rhythm: 'rhythm', arrangement: 'timeline', 'saved-mixes': 'library' };
 
 export default function App() {
   const studio = useStudio();
   const [page, setPage] = useState(() => pageFromHash(window.location.hash));
-  const [role, setRole] = useState('nature');
-  const inputRef = useRef(null);
+  const importDialog = useRef(null);
   const mainRef = useRef(null);
   const closeClip = studio.closeClip;
   useEffect(() => {
@@ -41,11 +42,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', navigate);
   }, [page.id, closeClip]);
   useEffect(() => { document.title = page.label + ' · NatureMix'; }, [page.label]);
-  function chooseFiles(event) {
-    const selected = Array.from(event.target.files || []);
-    event.target.value = '';
-    void studio.importFiles(selected, role);
-  }
+  function addAudio() { importDialog.current?.showModal(); }
   return <div className="app-shell">
     <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); mainRef.current?.focus(); }}>Skip to page content</a>
     <a className="skip-link" href="#workspace-playback" onClick={(event) => { event.preventDefault();document.querySelector('.workspace-transport button')?.focus(); }}>Skip to playback</a>
@@ -64,13 +61,14 @@ export default function App() {
     <div className="studio-content-shell">
     <header className="workspace-header"><div className="workspace-breadcrumb"><Icon name={pageIcons[page.id]} size={18} /><span>Workspace</span><span aria-hidden="true">/</span><strong>{page.label}</strong></div>
       <EditHistory studio={studio} /><div className="workspace-header-actions"><span className="local-label"><span className="small-dot" />On this device</span>
-        {page.id === 'studio' ? <button type="button" className="primary-button" disabled={studio.busy} onClick={() => inputRef.current?.click()}><Icon name="plus" size={16} />Add audio</button> : <a className="primary-button" href="#/studio"><Icon name="plus" size={16} />Add audio</a>}
+        {studio.activeProject && studio.dirty ? <button className="header-save" type="button" disabled={studio.busy || studio.projectsBlocked} onClick={studio.updateSavedMix}>Save changes</button> : <a className="header-save" href="#/saved-mixes">{studio.activeProject ? 'Saved mixes' : 'Save mix'}</a>}
+        <button type="button" className="primary-button" disabled={studio.busy} onClick={addAudio}><Icon name="plus" size={16} />Add audio</button>
       </div></header>
     <main className={'app-main page-' + page.id} id="main-content" ref={mainRef} tabIndex={-1} aria-labelledby="page-title">
       <section className="page-heading"><div><p className="eyebrow">NATUREMIX / {page.label.toUpperCase()}</p><h1 id="page-title">{page.title}</h1><p>{page.description}</p></div><span className="page-mode"><span className="small-dot" />{studio.arrangement.enabled ? 'Arrangement' : 'Free mix'}</span></section>
       <div className="page-content">
         {page.id === 'studio' && <><details className="starter-disclosure" open={!studio.tracks.length || undefined}><summary>Try a starter scene</summary><SceneStarters studio={studio} /></details><div className="studio-page-grid"><MixWorkspace studio={studio} />
-          <aside className="studio-sidebar" aria-label="Add sounds"><AudioImport studio={studio} role={role} setRole={setRole} inputRef={inputRef} chooseFiles={chooseFiles} /><SoundLibrary studio={studio} /><details className="sources-disclosure"><summary>Reuse a recording · {studio.sources.length} sources</summary><SourcePool studio={studio} /></details></aside>
+          <aside className="studio-sidebar" aria-label="Add sounds"><AudioImport studio={studio} onAddAudio={addAudio} /><SoundLibrary studio={studio} /><details className="sources-disclosure"><summary>Reuse a recording · {studio.sources.length} sources</summary><SourcePool studio={studio} /></details></aside>
         </div></>}
         {page.id === 'rhythm' && <StepSequencer studio={studio} />}
         {page.id === 'arrangement' && <Arrangement studio={studio} />}
@@ -81,5 +79,6 @@ export default function App() {
     <footer className="app-footer"><span>naturemix. <span>Sounds from the world. A mix of your own.</span></span><span>Your imported audio stays on this device.</span></footer>
     </div>
     <WorkspaceTransport studio={studio} />
+    <AudioImportDialog studio={studio} dialogRef={importDialog} />
   </div>;
 }

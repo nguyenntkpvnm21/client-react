@@ -2,7 +2,7 @@ import { barSeconds, capturePattern, copyPattern as copyRhythmPattern, editBlock
 import { MixHistory } from '../lib/mixHistory.js';
 import { clipName, ensureClipSlot, sourceId } from '../lib/audioSources.js';
 import { DRUMS, drumKit, drumTrack } from '../lib/drumStarter.js';
-import { duplicateClip, placedClip, splitClip, trimmedClip } from '../lib/clipInstances.js';
+import { duplicateClip, eventClip, placedClip, splitClip, trimmedClip } from '../lib/clipInstances.js';
 import { initialLoopRegion, validateLoopRegion } from '../lib/loopRegion.js';
 import { checkExportCanceled, exportFilename, renderArrangement } from '../lib/renderArrangement.js';
 import { enableRhythmTrack, rhythmMetadata, rhythmRegion } from '../lib/rhythmState.js';
@@ -322,7 +322,7 @@ export default function useStudio() {
       ? previous : { ...previous, sources: [...previous.sources, { id: sound.id, catalogId: sound.id, name: sound.name, role: sound.role }], tracks: [...previous.tracks, { ...track, sourceId: sound.id }] }, 'Add library sound');
   }
 
-  async function importFiles(selected, role) {
+  async function importFiles(selected, role, repeat = role === 'nature') {
     if (importLock.current || projectLock.current || !selected.length) return;
     stopPreview();
     importLock.current = true;beginEditGesture('import');
@@ -338,7 +338,7 @@ export default function useStudio() {
         const id = 'custom-' + crypto.randomUUID();
         try {
           validateAudioFile(file);
-          const track = { id, catalogId: null, name: file.name, role, volume: 50, muted: false, solo: false, loop: role === 'nature' };
+          const track = { id, catalogId: null, name: file.name, role, volume: 50, muted: false, solo: false, loop: repeat };
           await player.load(track, file);
           if (!alive.current || player.disposed) return;
           try { await saveAudio(id, file); }
@@ -381,7 +381,8 @@ export default function useStudio() {
     const player = engine.current;
     player.pause();player.setArrangement(next.arrangement);player.setBpm(next.bpm);
     player.setTracks(withSources(next.tracks));player.setMaster(next.master);player.seek(position);
-    if (resume) await player.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
+    // A shorter one-shot edit can put the cursor at the new end; do not restart it implicitly.
+    if (resume && statusRef.current !== 'finished') await player.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
   }
 
   function focusClip(id) {
@@ -454,6 +455,25 @@ export default function useStudio() {
       const newClip = next.tracks.find((item) => !current.tracks.some((old) => old.id === item.id));
       if (newClip) focusClip(newClip.id);
       setNotice(action === 'split' ? 'Clip split at the playhead. Both parts share the original recording.' : 'Clip duplicated at the same position. Move or edit the copy independently.');
+      return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  async function createEvent(id, start, end) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    projectLock.current = true;setProjectBusy(true);
+    const player = engine.current;
+    try {
+      const current = mixRef.current, position = player.position(), resume = statusRef.current === 'playing';
+      const duration = player.buffers.get(id)?.duration;
+      const next = eventClip(current, id, start, end, position, duration, 'custom-clip-' + crypto.randomUUID());
+      const added = next.tracks.at(-1);
+      await player.load(withSources([added])[0], files.current[sourceId(added)]);
+      if (!alive.current || player.disposed) return false;
+      closeClip();changeMix(next, 'Create sound event');
+      await rescheduleMix(next, position, resume);focusClip(added.id);
+      setNotice('Sound event added at the mix cursor in Arrangement. Your original clip is kept.');
       return true;
     } catch (error) { if (alive.current) setNotice(error.message);return false; }
     finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
@@ -661,7 +681,7 @@ export default function useStudio() {
     if (projectLock.current || importLock.current) return;
     const duration = engine.current.buffers.get(id)?.duration;
     const region = validateRegion(start, end, duration);
-    if (location === 'arrangement') {
+    if (location !== 'sequencer') {
       const current = mixRef.current, position = engine.current.position(), resume = statusRef.current === 'playing';
       const next = { ...current, tracks: current.tracks.map((track) => track.id === id ? { ...track, ...(reset ? { clipStart: 0, clipEnd: null } : region), loop, sourceOffset: undefined, gainEnvelope: undefined } : track) };
       closeClip();changeMix(next, 'Choose audio range');
@@ -685,12 +705,6 @@ export default function useStudio() {
       setNotice('Sample ready. Hear rhythm previews this row; Play full mix includes your other clips.');
       return;
     }
-    engine.current.restart();
-    setElapsed(0);
-    setPreview(null);
-    updateTrack(id, { ...(reset ? { clipStart: 0, clipEnd: null } : region), sourceOffset: undefined, gainEnvelope: undefined, loop });
-    setNotice(reset ? 'Full recording restored. Press Play to listen.' : 'Clip applied. The mix starts at the beginning of each selected region.');
-    setEditorId(null);
   }
 
   function setArrangementLength(value) {
@@ -1134,7 +1148,7 @@ export default function useStudio() {
     transfer, restoreInfo, discardProjectFile, cancelTransfer, downloadProject: () => transferAction('backup'),
     inspectProjectFile: (file) => transferAction('inspect', file), restoreProject: (name) => transferAction('restore', name),
     scenePreview, hearScene, stopScene, useScene,
-    editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm, addDrumBeat,
+    editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createEvent, createRhythm, addDrumBeat,
     busy: booting || importing || rhythmBusy || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
     setBpm,
     setSequenced: (id, enabled) => editPattern(id, (sequence) => ({ ...sequence, enabled })),

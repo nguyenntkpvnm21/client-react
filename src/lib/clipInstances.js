@@ -1,5 +1,5 @@
 import { arrangementWindow, fitFades, placementMetadata } from './arrangementState.js';
-import { clipRegion } from './clipRegion.js';
+import { clipRegion, validateRegion } from './clipRegion.js';
 import { clipName, ensureClipSlot, sourceId } from './audioSources.js';
 import { isSequenced } from './sequencerState.js';
 
@@ -8,6 +8,21 @@ export function duplicateClip(mix, id, newId) {
   const track = mix.tracks.find((item) => item.id === id);
   if (!track) throw new Error('Choose a clip first.');
   return { ...mix, tracks: [...mix.tracks, { ...structuredClone(track), id: newId, sourceId: sourceId(track), name: clipName(track.name, mix.tracks) }] };
+}
+
+// A sound event reuses the original recording, while keeping its range and timing independent.
+export function eventClip(mix, id, start, end, at, sourceDuration, newId) {
+  ensureClipSlot(mix);
+  const original = mix.tracks.find(track => track.id === id && !track.patternBlock);
+  if (!original) throw new Error('Choose an audio clip first.');
+  const region = validateRegion(start, end, sourceDuration);
+  const length = Math.max(.05, region.clipEnd - region.clipStart);
+  if (!Number.isFinite(at) || at < 0 || at + length > 300 + 1e-7) throw new Error('Move the mix cursor earlier or choose a shorter sound. Events must fit within 5:00.');
+  const name = original.name.slice(0, 140) + ' · event';
+  const track = { id: newId, sourceId: sourceId(original), catalogId: original.catalogId, name: mix.tracks.some(track => track.name === name) ? clipName(name, mix.tracks) : name,
+    role: original.role, volume: original.volume, muted: original.muted, solo: original.solo || mix.tracks.some(track => track.solo), loop: false, ...region,
+    placement: { start: at, end: Math.min(300, at + length), fadeIn: 0, fadeOut: 0 } };
+  return { ...mix, arrangement: { ...mix.arrangement, enabled: true, duration: Math.max(mix.arrangement.duration, track.placement.end) }, tracks: [...mix.tracks, track] };
 }
 
 export function splitClip(mix, id, at, sourceDuration, newId) {

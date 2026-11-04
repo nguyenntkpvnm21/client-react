@@ -18,7 +18,7 @@ lockfile requires Node 20.19+ or Node 22.12+).
     npm run lint
     npm run build
 
-The automated suite has 209 tests, plus 8 separate Focus Session tests. No additional testing dependency is required.
+The automated suite has 218 tests, plus 8 separate Focus Session tests. No additional testing dependency is required.
 
 ## Four pages, one workspace
 
@@ -124,7 +124,9 @@ auditions remain separate from the shared mix transport.
   unused decoded recordings are released while mix layers and previews stay cached.
   Source files, saved mixes, stereo channels, pitch and timing remain unchanged.
   Browser/device memory can still limit very large mixes.
-- Nature imports loop by default; Music/instrumental and Vocal imports do not.
+- Add audio opens the same import dialog on all four pages. Choose Nature,
+  Music/instrumental or Vocal before choosing files; Repeat is visible and editable.
+  Nature suggests repeat; Music/instrumental and Vocal suggest playing once.
   The included Music layer has its own looping default. Changing role does not
   silently change an existing Loop setting.
 - Independent volume, mute, solo and Loop; shared Master. Muted solo layers stay
@@ -152,14 +154,14 @@ normal region overwritten by an older version cannot be inferred or recovered.
 
 The editor loads actual decoded samples and offers:
 
-1. Listen mode is the default. Click or tap to hear the recording at that point
+1. Click or tap to hear the recording at that point
    without changing the selected range. Recording audition has its own cursor
    and clock; it pauses the mix and leaves the shared mix position untouched.
 2. Use the full-recording overview to locate an event. The detailed waveform
-   opens an eight-second window there, with a time ruler. Set start here and
-   Set end here mark the region while audition continues; Stop here retains the
+   opens an eight-second window there, with a time ruler. More tools contains Set start here and
+   Set end here to mark the region while audition continues; Stop here retains the
    recording cursor. Preview completion also retains its last observed position.
-3. Select region mode lets you drag a new selection. A tap alone still preserves
+3. Drag the waveform to make a new selection. A tap alone still preserves
    it. Drag Move to shift the region, or either 44-pixel edge target to trim.
    Edge and Move controls support arrows (0.01 seconds) and Shift (0.001).
 4. Zoom in/out, Show selection, Full recording, pan buttons and a full-recording
@@ -171,12 +173,13 @@ The editor loads actual decoded samples and offers:
 6. Find next sound moves the draft to a later audible region, wrapping to the
    first detected region when necessary. Detection uses signal amplitude and can
    select noise or an imperfect onset; always audition it before applying.
-7. Exact Start/End fields and sliders remain under an expandable section.
+7. Exact Start/End fields and Reset clip remain under Exact times & reset.
 
 Selections are nondestructive and must be at least 0.05 seconds, unless the
-recording itself is shorter. The editor changes a draft until Apply range or Use
-this sample. Applying in Arrangement or Rhythm keeps the shared mix position
-and its current play/pause intent; Studio normal-clip apply still restarts it.
+recording itself is shorter. The editor changes a draft until Use selected audio or Use
+this sample. Applying in Studio, Arrangement or Rhythm keeps the shared mix position
+and its current play/pause intent where the new duration permits. Shortening a finite
+Free mix past its cursor leaves playback at its new end instead of restarting it.
 Closing or navigating away discards the draft. Use full recording is removed
 from the sample editor to avoid accidentally repeating a whole song per hit.
 
@@ -266,7 +269,12 @@ All rows share a time axis; overlapping windows play together.
 - Drag the middle of a clip to move it while preserving its length.
 - Drag the bottom Entry/Exit handles to trim normal audio and its window. Loop trims preserve phase; trimming hatched silence does not invent more selected audio. Load the waveform first if needed.
 - Drag top handles for Fade in/out. Arrow keys work on all controls; Shift gives
-  fine adjustments. Snap to beats can be switched off.
+  fine adjustments. Snap offers Off (default), Seconds and Beats. Rhythm sections
+  always move and resize in whole bars.
+- Zoom in/out, Full song, Show selected clip and earlier/later view controls share
+  one visible range across the ruler, all rows and the listening-loop strip. Zoom
+  shows actual waveform detail in the visible source region and never changes
+  the saved song length or timing. Select a row to reveal its extra clip actions.
 - During dragging, a temporary draft is shown. Release validates and applies
   once at the current playback position; other layers and the shared clock keep
   running. Only the affected normal source or rhythmic envelope/voices are rebuilt. A canceled gesture does not apply.
@@ -302,7 +310,7 @@ The playback position is temporary and is not included in saved snapshots.
 Listen to a section sits above the ruler. Drag across its strip to select a new
 range, drag the center to move it, or drag either edge. The two handles occupy
 separate vertical rows so small selections remain selectable on touch screens.
-Snap to beats applies here as well. Arrow keys move selection controls; Shift
+The selected timeline snap applies here as well. Arrow keys move selection controls; Shift
 makes 0.01-second adjustments. Exact section times and keyboard help expands
 numeric fields when needed. Sections must be at least 0.25 seconds long.
 
@@ -378,7 +386,7 @@ Saved mixes contain configurations, not a rendered WAV/MP3 file.
 
 ## Verification
 
-The 209 tests cover migration, separate regions, clear/enable preservation,
+The 218 tests cover migration, separate regions, clear/enable preservation,
 selection bounds and stereo detection, timeline bounds/snap/fades, mono/ringing
 scheduling, bounded overlaps, finite isolated previews, cancellation, future
 entries, source offsets, pause/resume across tempo changes, finite completion,
@@ -505,6 +513,13 @@ rows into overlapping windows to layer the sound. Project sources in Arrangement
 is expandable; Add clip inserts at the current playhead. Studio also exposes
 Project sources and Duplicate clip. There are up to 8 sources and 32 clips.
 
+For a short bird call, thunder hit or other sound event, select its source range
+in Edit audio and open Create a sound event. Create event at the mix cursor makes
+a separate one-shot clip with its own timing, sharing the original source audio.
+The original clip stays unchanged; the action enables Arrangement and can be
+undone in one step. Events must fit within 5:00 and use the existing clip limit.
+This shortcut does not add crossfades at ambience loop seams or automatic event repetition.
+
 Pause at a cut point and choose **Split at playhead** on the desired normal row.
 Both parts must have at least 0.05 s of audible audio. A one-shot split creates
 adjacent source ranges; a looping split preserves the original region and loop
@@ -516,8 +531,8 @@ can still be duplicated and edited independently.
 Bottom timeline edges trim normal audio; numeric Edit timing remains a window
 placement tool. Edit audio opens the full waveform selector at that row, with
 zoom, visual selection, exact times and isolated preview. Applying an audio
-range there keeps the workspace cursor and play/pause intent. Studio's existing
-normal-clip apply behavior remains unchanged. Duplicate and split also retain
+range there or in Studio keeps the workspace cursor and play/pause intent,
+stopping at the new end if a finite clip becomes shorter. Duplicate and split also retain
 the current cursor, with the new clip focused/scrolled into view.
 
 Mix metadata adds a source registry and sourceId on clips. Old workspace and
@@ -551,6 +566,11 @@ The selected clip has a lime outline and a header label. Selection is separate
 from the cyan sample range and the listening cursor. Isolated sample/rhythm
 previews are identified in the shared player with a stop button.
 
+The shared player labels sample, pattern and scene previews in one place.
+Return to mix stops the isolated preview and resumes workspace playback.
+Save mix/Saved mixes is available in the header; Save changes directly updates
+an opened named mix. Saved mixes keeps Save another copy as a secondary action.
+
 ## NatureMix patterns in your song
 
 NatureMix combines vocals, instrumental music, nature recordings and handmade
@@ -563,6 +583,7 @@ turning Rhythm into a full instrument workstation.
 3. Make variation B creates independent rows sharing the same original sources.
    Edit steps, level, mute, sample and tail policy. Hear pattern loops all its rows
    in isolation, while Hear rhythm auditions one row and Hear sample its source.
+   The grid stays above placement details; Place in song jumps to the form below it.
 4. Choose a start bar (bar 1 is the song start) and repeat count, then Add to
    Arrangement. The suggested start follows the last placed section. The first
    addition moves matching current rhythm rows into that section, preventing a

@@ -4,6 +4,7 @@ import { enableRhythmTrack, rhythmMetadata, rhythmRegion, patternSummary, MAX_RI
 import { boundSelection, listeningView, markSelection, moveSelection, sizedSelection, waveformPeaks, findSoundRegion } from '../src/lib/audioSelection.js';
 import { DRUMS, drumBuffer, drumKit, drumTrack } from '../src/lib/drumStarter.js';
 import { editTimelineWindow } from '../src/lib/timelineEditing.js';
+import { fitTimelineSelection, panTimeline, timelinePosition, timelineTime, timelineView, timelineWaveform, zoomTimeline } from '../src/lib/timelineViewport.js';
 import { serializeMix, validateMix } from '../src/lib/studioState.js';
 import { sameMix, changeProject } from '../src/lib/savedMixes.js';
 import { StepScheduler } from '../src/lib/stepScheduler.js';
@@ -24,6 +25,71 @@ function setup() {
  return { context, sources, gains, timers, scheduler, engine: new AudioEngine({ createContext: () => context }) };
 }
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, `${a} != ${b}`);
+
+test('timeline zoom preserves the working point and pans within the song without changing its length', () => {
+ const full = timelineView(null, 200), zoomed = zoomTimeline(full, 200, .5, 80);
+ assert.deepEqual(full, { start: 0, end: 200 });assert.deepEqual(zoomed, { start: 40, end: 140 });
+ close(timelinePosition(80, full), timelinePosition(80, zoomed));
+ assert.deepEqual(panTimeline(zoomed, 200, 1), { start: 100, end: 200 });
+ assert.deepEqual(panTimeline(zoomed, 200, -1), { start: 0, end: 100 });
+ assert.deepEqual(timelineView(zoomed, 30), { start: 0, end: 30 });
+});
+
+test('zoomed ruler positions and pointer deltas use the displayed range rather than the full song', () => {
+ const view = { start: 80, end: 84 };
+ close(timelineTime(.25, view), 81);close(timelinePosition(83, view), 75);
+ close(timelineTime(-1, view), 80);close(timelineTime(2, view), 84);
+ const original = { start: 81, end: 81.5, fadeIn: .1, fadeOut: .1 };
+ const moved = editTimelineWindow(original, 'move', (view.end - view.start) * .125, 200);
+ close(moved.start, 81.5);close(moved.end, 82);close(moved.fadeIn, .1);
+});
+
+test('show selected clip makes a short event editable and keeps selections near song edges visible', () => {
+ const view = fitTimelineSelection({ start: 100, end: 100.5 }, 200);
+ assert.ok(view.start < 100 && view.end > 100.5);assert.ok(view.end - view.start < 1);
+ const end = fitTimelineSelection({ start: 199.8, end: 200 }, 200);
+ close(end.end, 200);assert.ok(end.start < 199.8);
+ assert.deepEqual(timelineView({ start: 0, end: .001 }, 200), { start: 0, end: .25 });
+ assert.deepEqual(timelineView({ start: NaN, end: 4 }, 200), { start: 0, end: 200 });
+});
+
+test('a zoomed ambience waveform reads source detail only for the visible second', () => {
+ const reads = [], read = (start, end, bins) => { reads.push({ start, end, bins });return Array.from({ length: bins }, (_, i) => i / bins); };
+ const wave = timelineWaveform({ loop: false }, { start: 10, end: 210, length: 200 }, { start: 0, end: 200 }, { start: 100, end: 101 }, read);
+ assert.deepEqual(reads, [{ start: 110, end: 111, bins: 320 }]);assert.equal(wave.bars.length, 320);
+ assert.ok(wave.bars[0].position < .01);assert.ok(wave.bars.at(-1).position > .99);
+ assert.ok(wave.bars.at(-1).peak > .99);
+});
+
+test('visible waveforms preserve source offset across a loop wrap and omit one-shot silent padding', () => {
+ const reads = [], read = (start, end, bins) => { reads.push({ start, end, bins });return Array(bins).fill(.5); };
+ const region = { start: 4, end: 7, length: 3 }, window = { start: 10, end: 30 };
+ const loop = timelineWaveform({ loop: true, sourceOffset: 1 }, region, window, { start: 11.5, end: 13.5 }, read);
+ assert.deepEqual(reads, [{ start: 6.5, end: 7, bins: 80 }, { start: 4, end: 5.5, bins: 240 }]);assert.equal(loop.bars.length, 320);
+ reads.length = 0;
+ const once = timelineWaveform({ loop: false, sourceOffset: 1 }, region, window, { start: 11.5, end: 15 }, read);
+ assert.equal(reads.length, 1);close(reads[0].start, 6.5);close(reads[0].end, 7);
+ assert.ok(once.bars.every(bar => bar.position < .5 / 3.5));
+ assert.equal(timelineWaveform({ loop: false, sourceOffset: 1 }, region, window, { start: 12, end: 15 }, read).bars.length, 0);
+});
+
+test('many repeated short sounds use one bounded waveform read for the visible timeline', () => {
+ let reads = 0;
+ const wave = timelineWaveform({ loop: true }, { start: 2, end: 2.1, length: .1 }, { start: 0, end: 200 }, { start: 0, end: 200 }, (start, end, bins) => {
+  reads += 1;close(start, 2);close(end, 2.1);return Array(bins).fill(.6);
+ });
+ assert.equal(reads, 1);assert.equal(wave.bars.length, 320);assert.ok(wave.bars.every(bar => bar.peak === .6));
+});
+
+test('extending a one-shot left trim previews the earlier source continuously without wrapping at the saved region', () => {
+ const reads = [], read = (start, end, bins) => { reads.push({ start, end, bins });return Array(bins).fill(.5); };
+ const extended = timelineWaveform({ loop: false, sourceOffset: -1 }, { start: 3, end: 7, length: 4 }, { start: 4, end: 9 }, { start: 4, end: 9 }, read);
+ assert.deepEqual(reads, [{ start: 2, end: 7, bins: 320 }]);assert.equal(extended.bars.length, 320);
+ reads.length = 0;
+ const beforeSource = timelineWaveform({ loop: false, sourceOffset: -1 }, { start: .2, end: 4.2, length: 4 }, { start: 0, end: 5 }, { start: 0, end: 5 }, read);
+ assert.equal(reads.length, 1);close(reads[0].start, 0);close(reads[0].end, 4.2);
+ assert.ok(beforeSource.bars.every(bar => bar.position > .8 / 5));
+});
 
 test('long recordings open a detailed listening window around the working point', () => {
  assert.deepEqual(listeningView(0, 200), { start: 0, end: 8 });

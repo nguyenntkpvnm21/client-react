@@ -130,3 +130,22 @@
 .arrangement-source-pool { margin: 16px 0; }
 .arrangement-source-pool > summary { color: var(--accent); font-size: 12px; cursor: pointer; padding: 11px 0; }
 .arrangement-source-pool .source-pool { margin-top: 8px; }
+
+/* View controls share one range across every lane; clip times remain unchanged. */
+.timeline-view-tools { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 12px 0 8px; }
+.timeline-view-tools > div { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.timeline-view-tools button { font-size: 12px; padding: 8px 10px; }
+.timeline-view-range { margin-left: auto; }
+.timeline-view-range output { min-width: 110px; text-align: center; color: #c7c7c7; font-size: 12px; font-variant-numeric: tabular-nums; }
+.timeline-instructions select { min-height: 44px; padding: 8px 10px; border: 1px solid #494949; border-radius: 7px; background: #151515; color: #eee; font: inherit; }
+.timeline-outside-view { position: absolute; inset: 0; display: grid; place-items: center; color: #777; font-size: 12px; pointer-events: none; }
+.arrangement-row > [hidden] { display: none !important; }
+.section-strip { overflow: hidden; }
+@media(max-width:760px) {
+  .timeline-view-tools > div:first-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .timeline-view-tools > .timeline-view-range { width: 100%; justify-content: space-between; margin-left: 0; }
+  .arrangement-row { padding-block: 12px; }
+  .arrangement-row-heading { margin-bottom: 8px; gap: 8px; }
+  .arrangement-row-heading .arrangement-row-controls { gap: 5px; }
+  .arrangement-row-heading .arrangement-row-controls button { padding-inline: 8px; }
+}
