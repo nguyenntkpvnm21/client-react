@@ -50,8 +50,13 @@
 .page-mode .small-dot { width: 4px; height: 4px; box-shadow: 0 0 8px #b7ff4a40; }
 .studio-page-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
 .studio-page-grid .workspace-panel { position: static; grid-column: auto; grid-row: auto; order: 0; padding: 24px; }
-.studio-sidebar { display: grid; gap: 16px; min-width: 0; position: sticky; top: 80px; max-height: calc(100dvh - var(--player-height) - 104px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
+.studio-sidebar { display: grid; gap: 16px; min-width: 0; align-content: start; }
 .studio-page-grid .studio-sidebar { order: 1; }
+@media (min-width:761px) and (max-height:760px) {
+  .app-sidebar .sidebar-layer-list, .app-sidebar .sidebar-footnote { display:none; }
+  .app-sidebar { gap:6px; padding-top:16px; }
+  .app-sidebar .brand { padding-bottom:12px; }
+}
 .studio-sidebar .library-panel, .studio-sidebar .import-panel { padding: 20px; }
 .studio-sidebar .section-heading h2 { font-size: 18px; }
 .studio-sidebar .sound-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
