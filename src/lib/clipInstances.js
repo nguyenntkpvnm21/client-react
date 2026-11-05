@@ -7,7 +7,9 @@ export function duplicateClip(mix, id, newId) {
   ensureClipSlot(mix);
   const track = mix.tracks.find((item) => item.id === id);
   if (!track) throw new Error('Choose a clip first.');
-  return { ...mix, tracks: [...mix.tracks, { ...structuredClone(track), id: newId, sourceId: sourceId(track), name: clipName(track.name, mix.tracks) }] };
+  const laneId = track.laneId || track.id;
+  const laneName = track.laneName || mix.tracks.find(item => (item.laneId || item.id) === laneId)?.name || track.name;
+  return { ...mix, tracks: [...mix.tracks.map(item => (item.laneId || item.id) === laneId ? { ...item, laneId, laneName } : item), { ...structuredClone(track), laneId, laneName, id: newId, sourceId: sourceId(track), name: clipName(track.name, mix.tracks) }] };
 }
 
 // A sound event reuses the original recording, while keeping its range and timing independent.
@@ -37,8 +39,10 @@ export function splitClip(mix, id, at, sourceDuration, newId) {
   if (!Number.isFinite(at) || at < window.start + .05 - 1e-8 || at > end - .05 + 1e-8) throw new Error('Place the playhead inside the audible clip, at least 0.05 seconds from each edge.');
   const delta = at - window.start;
   const envelope = track.gainEnvelope || fitFades(window, end);
-  const left = { ...track, gainEnvelope: { ...envelope }, placement: fitFades({ ...window, end: at, fadeOut: Math.max(0, at - (window.end - window.fadeOut)) }) };
-  const right = { ...structuredClone(track), id: newId, sourceId: sourceId(track), name: clipName(track.name, mix.tracks),
+  const laneId = track.laneId || track.id;
+  const laneName = track.laneName || mix.tracks.find(item => (item.laneId || item.id) === laneId)?.name || track.name;
+  const left = { ...track, laneId, laneName, gainEnvelope: { ...envelope }, placement: fitFades({ ...window, end: at, fadeOut: Math.max(0, at - (window.end - window.fadeOut)) }) };
+  const right = { ...structuredClone(track), laneId, laneName, id: newId, sourceId: sourceId(track), name: clipName(track.name, mix.tracks),
     gainEnvelope: { ...envelope }, placement: fitFades({ ...window, start: at, fadeIn: Math.max(0, window.start + window.fadeIn - at) }) };
   if (track.loop) right.sourceOffset = (offset + delta) % region.length;
   else {
@@ -46,7 +50,8 @@ export function splitClip(mix, id, at, sourceDuration, newId) {
     right.clipStart = region.start + offset + delta;right.clipEnd = region.end;delete right.sourceOffset;
   }
   const index = mix.tracks.indexOf(track);
-  return { ...mix, arrangement: { ...mix.arrangement, enabled: true }, tracks: [...mix.tracks.slice(0, index), left, right, ...mix.tracks.slice(index + 1)] };
+  const tracks = mix.tracks.map(item => (item.laneId || item.id) === laneId ? { ...item, laneId, laneName } : item);
+  return { ...mix, arrangement: { ...mix.arrangement, enabled: true }, tracks: [...tracks.slice(0, index), left, right, ...tracks.slice(index + 1)] };
 }
 
 export function placedClip(track, placement, reset = false) {
