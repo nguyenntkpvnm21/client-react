@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AudioEngine } from '../src/lib/audioEngine.js';
-import { duplicateClip, placedClip, splitClip, trimmedClip } from '../src/lib/clipInstances.js';
+import { duplicateClip, eventClip, placedClip, splitClip, trimmedClip } from '../src/lib/clipInstances.js';
 import { referencedAudio, changeProject } from '../src/lib/savedMixes.js';
 import { defaultMix, serializeMix, validateMix } from '../src/lib/studioState.js';
 import { createProjectBackup, inspectProjectBackup, restoredProject } from '../src/lib/projectBackup.js';
 import { scheduleNormalTrack } from '../src/lib/audioGraph.js';
 import { windowGain } from '../src/lib/arrangementState.js';
 import { MAX_CLIPS } from '../src/data/sounds.js';
+import { commitEditorPlacement, duplicateEditorClipAt, editEditorLane, editorClipWindow, editorLanes, editorTimelineMix, emptyEditorMix, fitEditorSongEnd, setEditorClipLoop } from '../src/lib/editorTracks.js';
+import { MixHistory } from '../src/lib/mixHistory.js';
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, a + ' != ' + b);
 const source = { id: 'custom-original', catalogId: null, name: 'Vocal.wav', role: 'vocal' };
@@ -25,6 +27,35 @@ function setup() {
   return { context, sources, gains, engine: new AudioEngine({ createContext: () => context }) };
 }
 const file = { arrayBuffer: async () => new ArrayBuffer(4) };
+
+test('selected audio becomes an independent one-shot event at the mix cursor without changing its original', () => {
+  const current = mix(clip({ loop: true, sequence: { enabled: true, steps: Array(16).fill(true) } }));
+  const before = structuredClone(current);
+  const next = eventClip(current, source.id, 3.2, 3.7, 8.5, 20, 'custom-event');
+  assert.deepEqual(current, before);assert.deepEqual(next.sources, before.sources);
+  const event = next.tracks.at(-1);
+  assert.equal(event.sourceId, source.id);assert.equal(event.loop, false);
+  assert.equal(event.clipStart, 3.2);assert.equal(event.clipEnd, 3.7);
+  near(event.placement.start, 8.5);near(event.placement.end, 9);
+  const restored = validateMix(serializeMix(next));
+  assert.equal(restored.tracks[1].sequence.enabled, false);assert.equal(restored.tracks[1].sourceOffset, undefined);
+  assert.deepEqual(restored.tracks[1].placement, event.placement);
+  const tiny = eventClip(current, source.id, 0, .02, 1, .02, 'custom-tiny-event');
+  const tinySaved = validateMix(serializeMix(tiny)).tracks.at(-1);
+  near(tinySaved.placement.start, 1);near(tinySaved.placement.end, 1.05);near(tinySaved.clipEnd, .02);
+});
+
+test('sound events extend the arrangement only when needed and reject invalid or overflowing ranges atomically', () => {
+  const current = mix(), before = structuredClone(current);
+  const next = eventClip(current, source.id, 2, 4, 19, 20, 'custom-event');
+  assert.equal(next.arrangement.duration, 21);assert.equal(next.arrangement.enabled, true);
+  for (const [start, end, at] of [[4, 2, 1], [0, 21, 1], [2, 4, -1], [2, 4, Infinity], [2, 4, 299]]) {
+    assert.throws(() => eventClip(current, source.id, start, end, at, 20, 'custom-invalid'));
+  }
+  assert.throws(() => eventClip(current, 'custom-missing', 2, 4, 0, 20, 'custom-invalid'));
+  assert.throws(() => eventClip({ ...current, tracks: Array(MAX_CLIPS).fill(clip()) }, source.id, 2, 4, 0, 20, 'custom-over'), /32 clips/);
+  assert.deepEqual(current, before);
+});
 
 test('legacy workspaces gain a source registry without changing clip controls or source identities', () => {
   const legacy = { version: 1, tracks: [{ ...source, volume: 37, muted: true, loop: false }], master: 62 };
@@ -180,4 +211,223 @@ test('malformed shared-source records cannot masquerade as valid saved projects'
   assert.equal(validateMix({ version: 1, ...current }).tracks.length, 3);
   const bad = { ...mix(), sources: [{ ...source }, { ...source }] };
   assert.throws(() => changeProject([], 'save', { id: 'mix-bad', name: 'Invalid', mix: { ...bad, tracks: [clip({ sourceId: 'custom-missing' })] } }), /invalid data/);
+});
+
+test('the editor starts empty and legacy clips sharing a source remain independent tracks', () => {
+  const empty = emptyEditorMix();assert.equal(empty.tracks.length, 0);assert.equal(empty.sources.length, 0);assert.equal(empty.arrangement.enabled, true);
+  const original = clip(), independent = clip({ id: 'custom-independent', volume: 31 });
+  const current = { ...mix(), tracks: [original, independent] };
+  const lanes = editorLanes(current);assert.equal(lanes.length, 2);assert.equal(lanes[1].volume, 31);
+  assert.equal(Object.hasOwn(serializeMix(current).tracks[0], 'laneId'), false);
+  assert.equal(Object.hasOwn(validateMix(serializeMix(current)).tracks[0], 'laneId'), false);
+  assert.equal(Object.hasOwn(serializeMix(current).tracks[0], 'laneName'), false);
+  assert.equal(Object.hasOwn(validateMix(serializeMix(current)).tracks[0], 'laneName'), false);
+});
+
+test('split and duplicated regions share track controls without changing another use of the recording', () => {
+  const unrelated = clip({ id: 'custom-independent', volume: 31, muted: true });
+  const current = splitClip({ ...mix(), tracks: [clip(), unrelated] }, source.id, 5, 20, 'custom-right');
+  const copied = duplicateClip(current, 'custom-right', 'custom-copy');
+  const lanes = editorLanes(copied);assert.equal(lanes.length, 2);assert.equal(lanes[0].clips.length, 3);
+  assert.ok(copied.tracks.filter(track => track.id !== unrelated.id).every(track => track.laneId === source.id));
+  const changed = editEditorLane(copied, lanes[0].id, { volume: 72, solo: true, name: 'Lead vocal' });
+  assert.ok(changed.tracks.filter(track => track.id !== unrelated.id).every(track => track.volume === 72 && track.solo && track.laneName === 'Lead vocal'));
+  assert.equal(editorLanes(changed)[0].name, 'Lead vocal');assert.deepEqual(changed.tracks.map(track => track.name), copied.tracks.map(track => track.name));
+  assert.deepEqual(changed.tracks.find(track => track.id === unrelated.id), unrelated);
+  assert.throws(() => editEditorLane(copied, lanes[0].id, { volume: 101 }), /between/);
+  assert.throws(() => editEditorLane(copied, lanes[0].id, { name: ' ' }), /track name/);
+});
+
+test('one track-volume gesture is one undo step for all of its split regions', () => {
+  const before = splitClip(mix(), source.id, 5, 20, 'custom-right');
+  const history = new MixHistory();history.begin('lane-level:' + source.id);
+  const first = editEditorLane(before, source.id, { volume: 60 });history.record(before, first, { key: 'lane-level:' + source.id });
+  const last = editEditorLane(first, source.id, { volume: 75 });history.record(first, last, { key: 'lane-level:' + source.id });history.end();
+  assert.equal(history.past.length, 1);
+  const undone = history.apply('undo', last);assert.ok(undone.mix.tracks.every(track => track.volume === 50));
+});
+
+test('a clip move into another track adopts destination controls atomically and preserves the source audio', () => {
+  const destination = clip({ id: 'custom-destination', name: 'Backing', volume: 21, muted: true, solo: true });
+  const current = { ...mix(), tracks: [clip(), destination] }, before = structuredClone(current);
+  const next = commitEditorPlacement(current, source.id, { start: 25, end: 35, fadeIn: 3, fadeOut: 4 }, 20, 'move', destination.id);
+  assert.equal(next.arrangement.duration, 35);assert.equal(editorLanes(next).length, 1);
+  for (const track of next.tracks) { assert.equal(track.laneId, destination.id);assert.equal(track.volume, 21);assert.equal(track.muted, true);assert.equal(track.solo, true); }
+  assert.equal(next.tracks[0].clipStart, before.tracks[0].clipStart);assert.equal(next.tracks[0].sourceId, source.id);
+  assert.deepEqual(current, before);
+  assert.throws(() => commitEditorPlacement(current, source.id, { start: 1, end: 11, fadeIn: 0, fadeOut: 0 }, 20, 'move', 'missing'), /destination/);
+  assert.throws(() => commitEditorPlacement(current, source.id, { start: 299, end: 309, fadeIn: 0, fadeOut: 0 }, 20), /arrangement/);
+  assert.deepEqual(current, before);
+});
+
+test('editor edge trims change source offsets; the repeat handle extends the same audio clip', () => {
+  const current = mix(clip({ clipStart: 2, clipEnd: 7, placement: { start: 1, end: 6, fadeIn: 0, fadeOut: 0 } }));
+  const trimmed = commitEditorPlacement(current, source.id, { start: 3, end: 6, fadeIn: 0, fadeOut: 0 }, 20, 'start');
+  near(trimmed.tracks[0].clipStart, 4);near(trimmed.tracks[0].clipEnd, 7);
+  const repeated = commitEditorPlacement(trimmed, source.id, { start: 3, end: 30, fadeIn: 0, fadeOut: 0 }, 20, 'repeat');
+  assert.equal(repeated.tracks[0].loop, true);assert.equal(repeated.arrangement.duration, 30);assert.equal(repeated.sources.length, 1);
+  near(repeated.tracks[0].clipStart, 4);near(repeated.tracks[0].clipEnd, 7);
+  assert.equal(current.tracks[0].loop, false);
+});
+
+test('duplicate at a new song position retains the split-loop phase and inherited fade curve', () => {
+  const original = clip({ loop: true, clipStart: 2, clipEnd: 5, placement: { start: 0, end: 18, fadeIn: 4, fadeOut: 2 } });
+  const split = splitClip(mix(original), source.id, 2, 20, 'custom-right');
+  const next = duplicateEditorClipAt(split, 'custom-right', 25, 20, 'custom-copy');
+  const copy = next.tracks.at(-1);near(copy.placement.start, 25);near(copy.placement.end, 41);near(copy.sourceOffset, 2);
+  assert.equal(copy.laneId, source.id);assert.equal(next.arrangement.duration, 41);
+  for (const time of [2.2, 3, 6, 17]) near(windowGain(split.tracks[1].gainEnvelope, time), windowGain(copy.gainEnvelope, time + 23));
+  assert.throws(() => duplicateEditorClipAt(split, 'custom-right', 290, 20, 'custom-over'), /5:00/);
+});
+
+test('copying audible content excludes silent padding while keeping its original fade sound', () => {
+  const original = clip({ clipStart: 0, clipEnd: 5, placement: { start: 0, end: 20, fadeIn: 10, fadeOut: 10 } });
+  const next = duplicateEditorClipAt(mix(original), source.id, 25, 20, 'custom-copy');const copy = next.tracks.at(-1);
+  near(copy.placement.end, 30);assert.ok(copy.placement.fadeIn + copy.placement.fadeOut <= 5);
+  const audible = editorClipWindow(original, mix(original).arrangement, 20);
+  for (const time of [.5, 2, 4.5]) near(windowGain(audible, time), windowGain(copy.gainEnvelope, time + 25));
+  const before = setup(), after = setup();
+  scheduleNormalTrack({ context: before.context, output: {}, track: original, tracks: [original], buffer: { duration: 20 }, when: 0, offset: 0, arrangement: mix(original).arrangement });
+  scheduleNormalTrack({ context: after.context, output: {}, track: copy, tracks: [copy], buffer: { duration: 20 }, when: 0, offset: 25, arrangement: next.arrangement });
+  assert.deepEqual(after.gains[1].gain.events, before.gains[1].gain.events);
+  assert.deepEqual(validateMix(serializeMix(next)).tracks.at(-1).gainEnvelope, copy.gainEnvelope);
+});
+
+test('opening a legacy Free mix gives a four-minute one-shot room without altering saved timing or loops', () => {
+  const current = { ...mix(clip({ clipStart: 0, clipEnd: null, placement: { start: 0, end: null, fadeIn: 0, fadeOut: 0 } })), arrangement: { enabled: false, duration: 30 } };
+  const next = editorTimelineMix(current, { [source.id]: 240 });assert.equal(next.arrangement.duration, 240);assert.equal(next.arrangement.enabled, true);
+  assert.deepEqual(next.tracks, current.tracks);assert.equal(current.arrangement.enabled, false);
+  assert.equal(editorTimelineMix(current, { [source.id]: 900 }).arrangement.duration, 300);
+  const timed = { ...current, tracks: [clip({ placement: { start: 0, end: 45, fadeIn: 0, fadeOut: 0 } })] };
+  assert.equal(editorTimelineMix(timed, { [source.id]: 240 }).arrangement.duration, 45);
+  const loop = { ...current, tracks: [clip({ loop: true, placement: { start: 0, end: null, fadeIn: 0, fadeOut: 0 } })] };
+  assert.equal(editorTimelineMix(loop, { [source.id]: 240 }).arrangement.duration, 30);
+});
+
+test('portable backups keep independent legacy tracks separate and remap explicit shared track groups', async () => {
+  const independent = clip({ id: 'custom-independent', volume: 31 });
+  const current = splitClip({ ...mix(), tracks: [clip(), independent] }, source.id, 5, 20, 'custom-right');
+  const backup = await createProjectBackup({ mix: current, name: 'Track groups', resolveAudio: () => new Blob(['audio'], { type: 'audio/wav' }) });
+  const inspected = await inspectProjectBackup(backup), restored = restoredProject(inspected, 'Track groups');
+  assert.equal(editorLanes(restored.mix).length, 2);assert.equal(editorLanes(restored.mix)[0].clips.length, 2);
+  assert.equal(restored.mix.tracks[0].laneId, restored.mix.tracks[1].laneId);assert.notEqual(restored.mix.tracks[0].laneId, source.id);
+  assert.equal(Object.hasOwn(restored.mix.tracks[2], 'laneId'), false);assert.equal(restored.mix.tracks[2].volume, 31);
+});
+
+test('an included sound keeps its editor track name and routing through save and reload', () => {
+  const current = defaultMix();current.tracks[0] = { ...current.tracks[0], laneId: 'rain', name: 'Texture', role: 'music' };
+  const saved = serializeMix(current), restored = validateMix(saved);
+  assert.equal(restored.tracks[0].name, 'Texture');assert.equal(restored.tracks[0].role, 'music');assert.deepEqual(serializeMix(restored), saved);
+});
+
+test('the editor uses audible one-shot ends and fitted fades without rewriting legacy placements', () => {
+  const original = clip({ clipStart: 0, clipEnd: null, placement: { start: 3, end: null, fadeIn: 15, fadeOut: 15 } });
+  const before = structuredClone(original), arrangement = { enabled: true, duration: 120 };
+  const window = editorClipWindow(original, arrangement, 12);
+  assert.deepEqual(window, { start: 3, end: 15, fadeIn: 6, fadeOut: 6 });
+  const moved = commitEditorPlacement(mix(original), original.id, { ...window, start: 20, end: 32 }, 12);
+  assert.equal(moved.tracks[0].placement.end, 32);
+  assert.equal(moved.tracks[0].placement.fadeIn, 6);
+  assert.deepEqual(original, before);
+  assert.equal(editorClipWindow(original, arrangement).end, 120);
+  assert.equal(editorClipWindow({ ...original, loop: true }, arrangement, 12).end, 120);
+  assert.equal(editorClipWindow({ ...original, sequence: { enabled: true, steps: Array(16).fill(true) } }, arrangement, 12).end, 120);
+});
+
+test('editor region ends respect cropped audio, split offsets and earlier explicit exits', () => {
+  const original = clip({ clipStart: 2, clipEnd: 12, sourceOffset: 3, placement: { start: 5, end: 30, fadeIn: 0, fadeOut: 0 } });
+  const arrangement = { enabled: true, duration: 60 };
+  assert.equal(editorClipWindow(original, arrangement, 20).end, 12);
+  assert.equal(editorClipWindow({ ...original, placement: { ...original.placement, end: 8 } }, arrangement, 20).end, 8);
+});
+
+test('fitting song end removes one-shot padding without changing the source range or scheduled fade sound', () => {
+  const original = clip({ clipStart: 2, clipEnd: 7, placement: { start: 1, end: 20, fadeIn: 8, fadeOut: 6 } });
+  const current = { ...mix(original), arrangement: { enabled: true, duration: 120 } }, before = structuredClone(current);
+  const next = fitEditorSongEnd(current, { [source.id]: 20 }), fitted = next.tracks[0];
+  near(next.arrangement.duration, 6);near(fitted.placement.end, 6);assert.equal(fitted.clipStart, 2);assert.equal(fitted.clipEnd, 7);
+  const oldGraph = setup(), newGraph = setup();
+  scheduleNormalTrack({ context: oldGraph.context, output: {}, track: original, tracks: [original], buffer: { duration: 20 }, when: 0, offset: 0, arrangement: current.arrangement });
+  scheduleNormalTrack({ context: newGraph.context, output: {}, track: fitted, tracks: [fitted], buffer: { duration: 20 }, when: 0, offset: 0, arrangement: next.arrangement });
+  assert.deepEqual(newGraph.sources[0].starts, oldGraph.sources[0].starts);assert.deepEqual(newGraph.gains[1].gain.events, oldGraph.gains[1].gain.events);
+  assert.deepEqual(current, before);assert.deepEqual(next.sources, before.sources);assert.equal(validateMix(serializeMix(next)).arrangement.duration, 6);
+});
+
+test('fitting uses the latest source-offset one-shot and retains existing split envelopes', () => {
+  const envelope = { start: 0, end: 40, fadeIn: 10, fadeOut: 5 };
+  const original = clip({ clipStart: 0, clipEnd: 10, sourceOffset: 3, gainEnvelope: envelope, placement: { start: 20, end: 50, fadeIn: 0, fadeOut: 0 } });
+  const other = clip({ id: 'custom-other', clipStart: 0, clipEnd: null, placement: { start: 0, end: 120, fadeIn: 0, fadeOut: 0 } });
+  const current = { ...mix(), tracks: [other, original], arrangement: { enabled: true, duration: 120 } };
+  const next = fitEditorSongEnd(current, { [source.id]: 20, [other.id]: 12 });
+  near(next.arrangement.duration, 27);near(next.tracks[0].placement.end, 12);near(next.tracks[1].placement.end, 27);
+  assert.deepEqual(next.tracks[1].gainEnvelope, envelope);assert.equal(next.tracks[1].sourceOffset, 3);
+});
+
+test('fitting preserves loop and sequenced windows and treats sub-second songs as at least one second', () => {
+  const loop = clip({ loop: true, placement: { start: 0, end: 40, fadeIn: 0, fadeOut: 3 } });
+  const sequence = clip({ id: 'custom-sequence', sequence: { enabled: true, steps: Array(16).fill(true) }, placement: { start: 0, end: 60, fadeIn: 0, fadeOut: 0 } });
+  const current = { ...mix(), tracks: [loop, sequence], arrangement: { enabled: true, duration: 120 } };
+  const next = fitEditorSongEnd(current, {});assert.equal(next.arrangement.duration, 60);assert.deepEqual(next.tracks, current.tracks);
+  const unboundedLoop = { ...current, tracks: [{ ...loop, placement: { ...loop.placement, end: null } }] };
+  assert.equal(fitEditorSongEnd(unboundedLoop, {}).arrangement.duration, 120);
+  const tiny = mix(clip({ clipStart: 0, clipEnd: null, placement: { start: 0, end: 20, fadeIn: 0, fadeOut: 0 } }));
+  const fitted = fitEditorSongEnd(tiny, { [source.id]: .02 });assert.equal(fitted.arrangement.duration, 1);near(fitted.tracks[0].placement.end, .05);
+});
+
+test('missing or invalid metadata rejects fitting before any source, clip, or saved timing is changed', () => {
+  const current = mix(), before = structuredClone(current);
+  for (const durations of [{}, { [source.id]: NaN }, { [source.id]: 0 }]) assert.throws(() => fitEditorSongEnd(current, durations), /original audio/);
+  assert.deepEqual(current, before);
+});
+
+test('moving a vocal into an instrumental track preserves its region label and destination header through deletion and restore', async () => {
+  const instrumental = { id: 'custom-instrumental', catalogId: null, name: 'Instrumental.wav', role: 'music' };
+  const vocal = clip({ name: 'Vocal.wav' }), backing = { ...clip({ id: 'custom-backing' }), sourceId: instrumental.id, name: 'Instrumental.wav', role: 'music' };
+  const current = { ...mix(vocal), sources: [source, instrumental], tracks: [vocal, backing] };
+  const moved = commitEditorPlacement(current, vocal.id, vocal.placement, 20, 'move', backing.id);
+  assert.equal(moved.tracks[0].name, 'Vocal.wav');assert.equal(moved.tracks[1].name, 'Instrumental.wav');
+  assert.equal(editorLanes(moved)[0].name, 'Instrumental.wav');assert.ok(moved.tracks.every(track => track.laneName === 'Instrumental.wav'));
+  const remaining = { ...moved, tracks: moved.tracks.filter(track => track.id !== backing.id) };
+  assert.equal(editorLanes(remaining)[0].name, 'Instrumental.wav');assert.equal(remaining.tracks[0].name, 'Vocal.wav');
+  const reloaded = validateMix(serializeMix(remaining));assert.equal(editorLanes(reloaded)[0].name, 'Instrumental.wav');assert.equal(reloaded.tracks[0].name, 'Vocal.wav');
+  const backup = await createProjectBackup({ mix: remaining, name: 'Region labels', resolveAudio: () => new Blob(['audio'], { type: 'audio/wav' }) });
+  const restored = restoredProject(await inspectProjectBackup(backup), 'Region labels');
+  assert.equal(editorLanes(restored.mix)[0].name, 'Instrumental.wav');assert.equal(restored.mix.tracks[0].name, 'Vocal.wav');
+});
+
+test('split and duplicate track names remain stable after the original region is removed; renaming preserves clip names', () => {
+  const split = splitClip(mix(), source.id, 5, 20, 'custom-right');
+  const copied = duplicateClip(split, 'custom-right', 'custom-copy');
+  const remaining = { ...copied, tracks: copied.tracks.filter(track => track.id !== source.id) };
+  assert.ok(remaining.tracks.every(track => track.laneName === source.name));assert.equal(editorLanes(remaining)[0].name, source.name);
+  const renamed = editEditorLane(remaining, source.id, { name: 'Lead vocal' });
+  assert.deepEqual(renamed.tracks.map(track => track.name), remaining.tracks.map(track => track.name));assert.equal(editorLanes(renamed)[0].name, 'Lead vocal');
+  const reloaded = validateMix(serializeMix(renamed));assert.equal(editorLanes(reloaded)[0].name, 'Lead vocal');assert.deepEqual(reloaded.tracks.map(track => track.name), remaining.tracks.map(track => track.name));
+});
+
+test('enabling Repeat keeps a legacy one-shot at its visible twelve-second footprint with the same fitted fades', () => {
+  const original = clip({ clipStart: 2, clipEnd: 14, placement: { start: 0, end: null, fadeIn: 15, fadeOut: 15 } });
+  const current = { ...mix(original), arrangement: { enabled: true, duration: 120 } }, before = structuredClone(current);
+  const next = setEditorClipLoop(current, source.id, true, 20), repeated = next.tracks[0];
+  assert.deepEqual(repeated.placement, { start: 0, end: 12, fadeIn: 6, fadeOut: 6 });assert.equal(repeated.loop, true);
+  assert.equal(next.arrangement.duration, 120);assert.equal(repeated.clipStart, 2);assert.equal(repeated.clipEnd, 14);assert.deepEqual(current, before);
+  const oldGraph = setup(), newGraph = setup();
+  scheduleNormalTrack({ context: oldGraph.context, output: {}, track: original, tracks: [original], buffer: { duration: 20 }, when: 0, offset: 0, arrangement: current.arrangement });
+  scheduleNormalTrack({ context: newGraph.context, output: {}, track: repeated, tracks: [repeated], buffer: { duration: 20 }, when: 0, offset: 0, arrangement: next.arrangement });
+  assert.deepEqual(newGraph.sources[0].starts, oldGraph.sources[0].starts);assert.deepEqual(newGraph.gains[1].gain.events, oldGraph.gains[1].gain.events);
+});
+
+test('Repeat toggle preserves inherited split envelopes and disabling it retains the configured window', () => {
+  const envelope = { start: 0, end: 120, fadeIn: 4, fadeOut: 20 };
+  const original = clip({ clipStart: 2, clipEnd: 14, sourceOffset: 3, gainEnvelope: envelope, placement: { start: 5, end: 120, fadeIn: 0, fadeOut: 0 } });
+  const current = { ...mix(original), arrangement: { enabled: true, duration: 120 } };
+  const next = setEditorClipLoop(current, source.id, true, 20);near(next.tracks[0].placement.end, 14);assert.deepEqual(next.tracks[0].gainEnvelope, envelope);assert.equal(next.tracks[0].sourceOffset, 3);
+  const extended = { ...next, tracks: [{ ...next.tracks[0], placement: { ...next.tracks[0].placement, end: 80 } }] };
+  const disabled = setEditorClipLoop(extended, source.id, false);assert.equal(disabled.tracks[0].loop, false);assert.equal(disabled.tracks[0].placement.end, 80);assert.deepEqual(disabled.tracks[0].gainEnvelope, envelope);
+});
+
+test('Repeat rejects unavailable source metadata atomically', () => {
+  const current = mix(), before = structuredClone(current);
+  for (const duration of [undefined, NaN, 0]) assert.throws(() => setEditorClipLoop(current, source.id, true, duration), /original audio/);
+  assert.deepEqual(current, before);
 });

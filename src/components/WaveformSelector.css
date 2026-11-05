@@ -27,7 +27,11 @@
 .waveform-ruler { display: flex; justify-content: space-between; gap: 4px; margin: 14px 0 6px; color: #bbb; font-size: 11px; font-variant-numeric: tabular-nums; }
 .waveform-modes { display: flex; gap: 4px; }
 .app-shell .waveform-editor .waveform-toolbar .waveform-modes button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
-.waveform-view-options { display: flex; align-items: center; }
+.waveform-view-options { align-items: center; }
+.waveform-view-options[open] { flex-basis: 100%; padding: 8px; border: 1px solid #444; border-radius: 8px; }
+.waveform-extra-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.waveform-extra-tools p { flex-basis: 100%; color: #aaa; line-height: 1.6; font-size: 13px; padding: 8px; }
+.sample-transport > span { color: #aaa; font-size: 13px; }
 .waveform-view-options summary { min-height: 44px; padding: 12px; color: #bbb; cursor: pointer; font-size: 12px; }
 .waveform-view-options button { margin: 4px; }
 .waveform-overview > i { position: absolute; top: 0; bottom: 0; width: 2px; background: white; pointer-events: none; }
@@ -35,4 +39,4 @@
 .waveform-handle span { background: #252525df; border: 1px solid var(--cyan, #7bb9a4); padding: 6px; border-radius: 4px; }
 .waveform-move { position: absolute; top: 0; left: 22px; right: 22px; min-height: 44px; display: grid; place-items: center; background: #333a; color: #eee; font-size: 10px; cursor: grab; white-space: nowrap; overflow: hidden; }
 .waveform-move:focus-visible { outline: 2px solid white; outline-offset: -2px; }
-@media(max-width:580px) { .sample-transport { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .sample-transport output { margin: 0; padding-inline: 0; } .waveform-ruler span { font-size: 10px; } .waveform-ruler span:nth-child(2), .waveform-ruler span:nth-child(4) { visibility: hidden; } }
+@media(max-width:580px) { .sample-transport { display: flex; justify-content: space-between; } .sample-transport output { margin: 0; padding-inline: 0; } .waveform-ruler span { font-size: 11px; } .waveform-ruler span:nth-child(2), .waveform-ruler span:nth-child(4) { visibility: hidden; } .waveform-toolbar { gap: 6px; } .waveform-editor button { padding-inline: 9px; } }

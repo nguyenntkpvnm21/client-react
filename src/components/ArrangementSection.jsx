@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { editLoopRegion, MIN_LOOP_SECONDS } from '../lib/loopRegion.js';
 import { clockTime } from '../lib/timeFormat.js';
 import { parsePlaybackTime } from '../lib/playbackTimeline.js';
+import { timelinePosition, timelineTime, timelineView } from '../lib/timelineViewport.js';
 
 function SectionForm({ studio }) {
   const [start, setStart] = useState(clockTime(studio.loopSection.start, 3));
@@ -18,11 +19,15 @@ function SectionForm({ studio }) {
   </form>;
 }
 
-export default function ArrangementSection({ studio, snap }) {
+export default function ArrangementSection({ studio, snapSize = 0, view: viewport }) {
   const [draft, setDraft] = useState(null);
   const gesture = useRef(null);
   const region = draft || studio.loopSection, duration = studio.arrangement.duration;
-  const position = (time) => time / duration * 100 + '%';
+  const view = timelineView(viewport, duration), span = view.end - view.start;
+  const position = (time) => timelinePosition(time, view) + '%';
+  const inView = (time) => time >= view.start - 1e-7 && time <= view.end + 1e-7;
+  const visibleStart = Math.max(region.start, view.start), visibleEnd = Math.min(region.end, view.end);
+  const visible = visibleEnd > visibleStart;
   const disabled = studio.busy || !studio.tracks.length;
   const active = studio.loopSection.enabled && ['playing', 'loading'].includes(studio.status);
   function finish(event, canceled = false) {
@@ -36,7 +41,7 @@ export default function ArrangementSection({ studio, snap }) {
     if (disabled || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
     event.preventDefault();
     const direction = ['ArrowLeft', 'ArrowDown'].includes(event.key) ? -1 : 1;
-    void studio.setLoopSection(editLoopRegion(region, action, direction * (event.shiftKey ? .01 : snap ? 60 / studio.bpm : .1), duration, event.shiftKey ? 0 : snap ? 60 / studio.bpm : 0));
+    void studio.setLoopSection(editLoopRegion(region, action, direction * (event.shiftKey ? .01 : snapSize || .1), duration, event.shiftKey ? 0 : snapSize));
   }
   return <section className="arrangement-section" aria-labelledby="section-title">
     <div className="section-heading"><div><h3 id="section-title">Listen to a section</h3><p>Drag across the strip to select a section. Move its center or adjust either edge.</p></div>
@@ -47,23 +52,23 @@ export default function ArrangementSection({ studio, snap }) {
       event.preventDefault();
       const target = event.target.closest('[data-section-action]');target?.focus();
       const box = event.currentTarget.getBoundingClientRect();
-      gesture.current = { id: event.pointerId, action: target?.dataset.sectionAction || 'select', x: event.clientX, width: box.width, left: box.left, original: studio.loopSection, draft: studio.loopSection };
+      gesture.current = { id: event.pointerId, action: target?.dataset.sectionAction || 'select', x: event.clientX, width: box.width, left: box.left, view, span, original: studio.loopSection, draft: studio.loopSection };
       event.currentTarget.setPointerCapture(event.pointerId);
     }} onPointerMove={(event) => {
       const g = gesture.current;if (!g || g.id !== event.pointerId) return;
       if (g.action === 'select') {
-        const at = (x) => Math.max(0, Math.min(duration, (x - g.left) / g.width * duration));
-        const a = at(g.x), b = at(event.clientX), beat = snap ? 60 / studio.bpm : 0;
+        const at = (x) => timelineTime((x - g.left) / g.width, g.view);
+        const a = at(g.x), b = at(event.clientX), beat = snapSize;
         const round = (value) => beat ? Math.round(value / beat) * beat : value;
         const start = Math.min(duration - MIN_LOOP_SECONDS, Math.max(0, round(Math.min(a, b))));
         const end = Math.min(duration, Math.max(start + MIN_LOOP_SECONDS, round(Math.max(a, b))));
         g.draft = { ...g.original, start, end };
-      } else g.draft = editLoopRegion(g.original, g.action, (event.clientX - g.x) / g.width * duration, duration, snap ? 60 / studio.bpm : 0);
+      } else g.draft = editLoopRegion(g.original, g.action, (event.clientX - g.x) / g.width * g.span, duration, snapSize);
       setDraft(g.draft);
     }} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={() => { gesture.current = null;setDraft(null); }}>
-      <div className="section-selected" style={{ left: position(region.start), width: position(region.end - region.start) }} aria-hidden="true" />
-      <div className="section-move" style={{ left: position(region.start), width: position(region.end - region.start) }} data-section-action="move" role="button" tabIndex={disabled ? -1 : 0} aria-label="Move selected arrangement section" onKeyDown={(event) => key(event, 'move')}><span>{clockTime(region.start, 2)}–{clockTime(region.end, 2)}</span></div>
-      {['start', 'end'].map((action) => <div key={action} className={'section-handle section-' + action} style={{ left: `clamp(22px, ${position(region[action])}, calc(100% - 22px))` }} data-section-action={action} role="slider" tabIndex={disabled ? -1 : 0}
+      {visible && <><div className="section-selected" style={{ left: position(visibleStart), width: (visibleEnd - visibleStart) / span * 100 + '%' }} aria-hidden="true" />
+      <div className="section-move" style={{ left: position(visibleStart), width: (visibleEnd - visibleStart) / span * 100 + '%' }} data-section-action="move" role="button" tabIndex={disabled ? -1 : 0} aria-label="Move selected arrangement section" onKeyDown={(event) => key(event, 'move')}><span>{clockTime(region.start, 2)}–{clockTime(region.end, 2)}</span></div></>}
+      {['start', 'end'].filter(action => inView(region[action])).map((action) => <div key={action} className={'section-handle section-' + action} style={{ left: `clamp(22px, ${position(region[action])}, calc(100% - 22px))` }} data-section-action={action} role="slider" tabIndex={disabled ? -1 : 0}
         aria-disabled={disabled} aria-label={'Arrangement loop ' + action} aria-valuemin={action === 'start' ? 0 : region.start + MIN_LOOP_SECONDS} aria-valuemax={action === 'start' ? region.end - MIN_LOOP_SECONDS : duration} aria-valuenow={region[action]} aria-valuetext={region[action].toFixed(2) + ' seconds'} onKeyDown={(event) => key(event, action)}><span>{action === 'start' ? '↤' : '↦'}</span></div>)}
     </div>
     <details className="section-exact"><summary>Type loop times</summary>

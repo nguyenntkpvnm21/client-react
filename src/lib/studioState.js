@@ -17,7 +17,9 @@ export function clipExtras(track) {
     && envelope.start >= -300 && envelope.end <= 600 && envelope.end > envelope.start
     && envelope.fadeIn >= 0 && envelope.fadeOut >= 0 && envelope.fadeIn + envelope.fadeOut <= envelope.end - envelope.start + 1e-7;
   const block = blockMetadata(track?.patternBlock);
-  return { ...(block ? { patternBlock: block } : {}), ...(Number.isFinite(track?.sourceOffset) && track.sourceOffset > 0 && track.sourceOffset <= 900 ? { sourceOffset: track.sourceOffset } : {}),
+  return { ...(typeof track?.laneId === 'string' && track.laneId.length > 0 && track.laneId.length <= 100 ? { laneId: track.laneId } : {}),
+    ...(typeof track?.laneName === 'string' && track.laneName.trim() && track.laneName.length <= 160 ? { laneName: track.laneName } : {}),
+    ...(block ? { patternBlock: block } : {}), ...(Number.isFinite(track?.sourceOffset) && track.sourceOffset > 0 && track.sourceOffset <= 900 ? { sourceOffset: track.sourceOffset } : {}),
     ...(valid ? { gainEnvelope: { start: envelope.start, end: envelope.end, fadeIn: envelope.fadeIn, fadeOut: envelope.fadeOut } } : {}) };
 }
 
@@ -65,8 +67,8 @@ export function validateMix(data) {
     }
     ids.add(item.id);
     tracks.push({ ...extras, ...clipMetadata(item), rhythm: rhythmMetadata(item), sequence: sequenceMetadata(item), placement, id: item.id, sourceId: source.id, catalogId: source.catalogId,
-      name: item.id === source.id && sound ? sound.name : (item.name || source.name).slice(0, 160),
-      role: sound?.role || (validRole(item.role) ? item.role : 'nature'),
+      name: item.id === source.id && sound && !extras.laneId ? sound.name : (typeof item.name === 'string' && item.name.trim() ? item.name : source.name).slice(0, 160),
+      role: extras.laneId && validRole(item.role) ? item.role : sound?.role || (validRole(item.role) ? item.role : 'nature'),
       volume: level(item.volume, sound?.volume ?? 50),
       muted: typeof item.muted === 'boolean' ? item.muted : false,
       solo: typeof item.solo === 'boolean' ? item.solo : false,
@@ -102,8 +104,8 @@ export function loadMix(storage) {
 
 export function serializeMix(mix) {
   const sources = sourceRecords(mix), patterns = patternsMetadata(mix.patterns, sources, new Set(mix.tracks.map(track => track.id)));
-  return { version: 1, ...(patterns.length ? { patterns } : {}), sources, master: mix.master, bpm: validBpm(mix.bpm), arrangement: arrangementMetadata(mix.arrangement), tracks: mix.tracks.map(({ id, sourceId: source, catalogId, name, role, volume, muted, solo, loop, clipStart, clipEnd, sequence, placement, rhythm, sourceOffset, gainEnvelope, patternBlock }) =>
-    ({ id, sourceId: source || id, catalogId, name, role, volume, muted, solo, loop, ...clipExtras({ sourceOffset, gainEnvelope, patternBlock }), ...clipMetadata({ clipStart, clipEnd }), rhythm: rhythmMetadata({ rhythm, sequence, clipStart, clipEnd }), sequence: sequenceMetadata({ sequence }), placement: patternBlock ? blockWindow(blockMetadata(patternBlock), mix.bpm) : placementMetadata(placement) })) };
+  return { version: 1, ...(patterns.length ? { patterns } : {}), sources, master: mix.master, bpm: validBpm(mix.bpm), arrangement: arrangementMetadata(mix.arrangement), tracks: mix.tracks.map(({ id, sourceId: source, catalogId, name, role, volume, muted, solo, loop, clipStart, clipEnd, sequence, placement, rhythm, sourceOffset, gainEnvelope, patternBlock, laneId, laneName }) =>
+    ({ id, sourceId: source || id, catalogId, name, role, volume, muted, solo, loop, ...clipExtras({ sourceOffset, gainEnvelope, patternBlock, laneId, laneName }), ...clipMetadata({ clipStart, clipEnd }), rhythm: rhythmMetadata({ rhythm, sequence, clipStart, clipEnd }), sequence: sequenceMetadata({ sequence }), placement: patternBlock ? blockWindow(blockMetadata(patternBlock), mix.bpm) : placementMetadata(placement) })) };
 }
 
 export function validateAudioFile(file) {

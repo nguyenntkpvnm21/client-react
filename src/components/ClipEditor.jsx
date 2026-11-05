@@ -45,25 +45,29 @@ function RegionControls({ track, info, studio, location }) {
     <WaveformSelector track={track} info={info} studio={studio} start={bounds?.clipStart ?? region.start} end={bounds?.clipEnd ?? region.end} rhythm={location === 'sequencer'}
       position={position} onSeek={seekRecording} onStop={stopListening}
       onChange={(value, keepPlaying = false) => { if (!keepPlaying) stopListening(); setStart(clockTime(value.start, 3)); setEnd(clockTime(value.end, 3)); }} />
-    <details><summary>Type start &amp; end</summary>
+    {error && <p className="clip-error" id={uid + '-error'} role="alert">{error}</p>}
+    <div className="clip-actions">
+      <button type="button" className="clip-apply" disabled={disabled || !!error} onClick={() => studio.applyClip(track.id, bounds.clipStart, bounds.clipEnd, loop, false, location)}>{location === 'sequencer' ? 'Use this sample' : 'Use selected audio'}</button>
+      <button type="button" disabled={disabled || !!error} onClick={audition}>{preview || previewBusy ? 'Stop preview' : 'Hear selection'}</button>
+    </div>
+    {location !== 'sequencer' && <label className="clip-loop"><input type="checkbox" checked={loop} disabled={disabled} onChange={(event) => change(setLoop, event.target.checked)} />Repeat selected audio</label>}
+    {location !== 'sequencer' && <details className="clip-event-tools"><summary>Create a sound event</summary>
+      <p>Make a separate one-shot clip from this selection at the mix cursor ({clockTime(studio.elapsed, 2)}). Uses Arrangement; your original clip is kept.</p>
+      <button type="button" disabled={disabled || !!error || !studio.createEvent} onClick={() => studio.createEvent(track.id, bounds.clipStart, bounds.clipEnd)}>Create event at {clockTime(studio.elapsed, 2)}</button>
+    </details>}
+    <details><summary>Exact times &amp; reset</summary>
     <div className="clip-fields">
       <div><label htmlFor={uid + '-start'}>Start · m:ss</label>
         <input id={uid + '-start'} className="time-input" type="text" value={start} disabled={disabled} aria-invalid={!!error} aria-describedby={error ? uid + '-error' : undefined} onChange={(event) => change(setStart, event.target.value)} />
-        <input aria-label={'Clip start for ' + track.name} type="range" min="0" max={info.duration} step="0.001" value={bounds?.clipStart ?? region.start} disabled={disabled} onChange={(event) => change(setStart, clockTime(Number(event.target.value), 3))} /></div>
+      </div>
       <div><label htmlFor={uid + '-end'}>End · m:ss</label>
         <input id={uid + '-end'} className="time-input" type="text" value={end} disabled={disabled} aria-invalid={!!error} aria-describedby={error ? uid + '-error' : undefined} onChange={(event) => change(setEnd, event.target.value)} />
-        <input aria-label={'Clip end for ' + track.name} type="range" min="0" max={info.duration} step="0.001" value={bounds?.clipEnd ?? region.end} disabled={disabled} onChange={(event) => change(setEnd, clockTime(Number(event.target.value), 3))} /></div>
+      </div>
     </div>
-    </details>
-    {error ? <p className="clip-error" id={uid + '-error'} role="alert">{error}</p> : <p className="clip-duration">Selection {clockTime(bounds.clipEnd - bounds.clipStart, 3)}</p>}
-    {location !== 'sequencer' && <label className="clip-loop"><input type="checkbox" checked={loop} disabled={disabled} onChange={(event) => change(setLoop, event.target.checked)} />Loop selected region</label>}
-    <div className="clip-actions">
-      <button type="button" className="clip-apply" disabled={disabled || !!error} onClick={() => studio.applyClip(track.id, bounds.clipStart, bounds.clipEnd, loop, false, location)}>{location === 'sequencer' ? 'Use this sample' : 'Apply range'}</button>
-      <button type="button" disabled={disabled || !!error} onClick={audition}>{preview || previewBusy ? 'Stop preview' : location === 'sequencer' ? 'Hear sample' : 'Preview clip'}</button>
       {location !== 'sequencer' && <button type="button" disabled={disabled} onClick={() => studio.applyClip(track.id, 0, info.duration, track.loop, true, location)}>Reset clip</button>}
-    </div>
+    </details>
     {isSequenced(track) && location !== 'sequencer' && <p className="clip-help">Rhythm is enabled. Turn rhythm off to hear normal clip edits.</p>}
-    <p className="clip-help">{location === 'arrangement' || location === 'sequencer' ? 'Applying keeps your mix position.' : 'Applying restarts the mix.'} Your original recording is kept.</p>
+    <p className="clip-help">Applying keeps your mix position. Your original recording is kept.</p>
   </div>;
 }
 

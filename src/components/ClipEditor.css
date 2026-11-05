@@ -25,6 +25,10 @@
 .clip-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .clip-actions button, .clip-loading button { border: 1px solid #50665d; border-radius: 8px; padding: .55rem .7rem; font: inherit; font-size: .75rem; color: #e0eae5; background: #1c2b25; cursor: pointer; }
 .clip-actions .clip-apply { color: #082018; background: #8ae5bf; border-color: #8ae5bf; font-weight: 650; }
+.clip-actions button { min-height: 44px; font-size: 13px; }
+.clip-event-tools p { color: #aaa; font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+.clip-controls > details button { min-height: 44px; border: 1px solid #555; border-radius: 7px; background: #252525; color: #eee; padding: 8px 12px; font: inherit; font-size: 13px; margin-top: 10px; cursor: pointer; }
+@media(max-width:580px) { .clip-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .clip-actions button { padding: 8px; } }
 .clip-editor button:disabled { opacity: .45; cursor: not-allowed; }
 .clip-editor :focus-visible { outline: 2px solid #b1ffe0; outline-offset: 3px; }
 .clip-help, .clip-loading { font-size: .71rem; line-height: 1.6; color: #a9bbb2; margin: .8rem 0 0; }

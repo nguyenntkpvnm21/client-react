@@ -1,20 +1,13 @@
-import { ROLES } from '../data/sounds.js';
 import Icon from './Icon';
+import './AudioImportDialog.css';
 
-export default function AudioImport({ studio, role, setRole, inputRef, chooseFiles }) {
+export default function AudioImport({ studio, onAddAudio }) {
   return <section className="import-panel panel" id="my-sounds" aria-labelledby="import-title">
     <div className="section-heading"><div><p className="eyebrow">MAKE IT PERSONAL</p><h2 id="import-title">Your sounds</h2></div><Icon name="upload" size={21} /></div>
-    <p className="import-description">Add a recording, instrumental or vocal.</p>
-    <label className="import-role" htmlFor="import-role">Add files as
-      <select id="import-role" value={role} onChange={(event) => setRole(event.target.value)} disabled={studio.busy}>
-        {ROLES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-      </select>
-    </label>
-    <input ref={inputRef} id="audio-files" className="sr-only" type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac" multiple tabIndex="-1"
-      aria-label="Choose audio files" onChange={chooseFiles} disabled={studio.busy} />
-    <button className="import-dropzone" type="button" disabled={studio.busy} onClick={() => inputRef.current?.click()}>
+    <p className="import-description">Add nature recordings, music or vocals.</p>
+    <button className="import-dropzone" type="button" disabled={studio.busy} onClick={onAddAudio}>
       <span className="upload-tile"><Icon name="plus" size={24} /></span><strong>{studio.importing ? 'Reading your sounds...' : 'Import audio'}</strong>
-      <span>Choose one or more files</span>
+      <span>Choose how your audio will play</span>
     </button>
     <p className="file-hint">MP3, WAV, OGG · up to 15:00 / 30 MB per file</p>
     <p className="storage-hint"><span className="small-dot" />Saved in this browser. No server upload.</p>

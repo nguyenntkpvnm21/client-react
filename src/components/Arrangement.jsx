@@ -12,6 +12,8 @@ import { isSequenced } from '../lib/sequencerState.js';
 import { formatTime } from '../lib/studioState.js';
 import { clockTime } from '../lib/timeFormat.js';
 import { parsePlaybackTime } from '../lib/playbackTimeline.js';
+import { clipRegion } from '../lib/clipRegion.js';
+import { fitTimelineSelection, panTimeline, timelinePosition, timelineTime, timelineView, zoomTimeline } from '../lib/timelineViewport.js';
 import './Arrangement.css';
 
 function LengthForm({ studio }) {
@@ -58,13 +60,14 @@ function TimingForm({ track, studio, onDone }) {
   </form>;
 }
 
-function ArrangementRow({ track, studio, cursor, snap }) {
+function ArrangementRow({ track, studio, cursor, snapSize, view }) {
   const [editing, setEditing] = useState(false);
   const editButton = useRef(null);
   const window = arrangementWindow(track, { ...studio.arrangement, enabled: true });
   const duration = studio.arrangement.duration;
   const [loading, setLoading] = useState(false);
   const active = studio.arrangement.enabled && studio.status === 'playing' && studio.elapsed >= window.start && studio.elapsed < window.end;
+  const selected = studio.selectedClipId === track.id;
   function done() { setEditing(false); editButton.current?.focus(); }
   return <article data-clip-id={track.id} className={'arrangement-row ' + track.role + (active ? ' is-active' : '') + (studio.selectedClipId === track.id ? ' is-selected' : '')} aria-label={track.name + ' arrangement'} onPointerDown={() => studio.selectClip(track.id)} onFocusCapture={() => studio.selectClip(track.id)}>
     <div className="arrangement-row-heading"><div><h3 title={track.name}>{track.name}</h3><span>{isSequenced(track) ? 'Rhythm pattern' : track.loop ? 'Looping layer' : 'One-shot layer'}</span></div>
@@ -73,11 +76,11 @@ function ArrangementRow({ track, studio, cursor, snap }) {
         <button type="button" aria-label={'Mute ' + track.name + ' in arrangement'} aria-pressed={track.muted} disabled={studio.projectBusy} onClick={() => studio.updateTrack(track.id, { muted: !track.muted })}>{track.muted ? 'Unmute' : 'Mute'}</button>
         <button type="button" ref={editButton} aria-label={'Edit timing for ' + track.name} aria-expanded={editing} disabled={studio.busy} onClick={() => editing ? done() : setEditing(true)}>{editing ? 'Close timing' : 'Edit timing'}</button>
       </div></div>
-    <TimelineClip track={track} studio={studio} window={window} cursor={cursor} snap={snap} />
-    <div className="timeline-row-tools">{!isSequenced(track) && <label><input type="checkbox" checked={track.loop} disabled={studio.busy} onChange={(event) => studio.updateTrack(track.id, { loop: event.target.checked })} aria-label={'Loop ' + track.name + ' selected clip'} />Repeat clip</label>}
+    <TimelineClip track={track} studio={studio} window={window} cursor={cursor} view={view} snapSize={snapSize} />
+    <div className="timeline-row-tools" hidden={!selected}>{!isSequenced(track) && <label><input type="checkbox" checked={track.loop} disabled={studio.busy} onChange={(event) => studio.updateTrack(track.id, { loop: event.target.checked })} aria-label={'Loop ' + track.name + ' selected clip'} />Repeat this sound</label>}
       {!studio.details[track.id] && <button type="button" disabled={loading || studio.busy} onClick={async () => { setLoading(true); try { await studio.loadTrackInfo(track.id); } finally { setLoading(false); } }}>{loading ? 'Loading waveform…' : 'Load waveform'}</button>}
     </div>
-    <div className="clip-instance-tools">
+    <div className="clip-instance-tools" hidden={!selected}>
       <button type="button" disabled={studio.busy} aria-label={'Duplicate ' + track.name} onClick={() => studio.duplicateClip(track.id)}>Duplicate</button>
       <button type="button" disabled={studio.busy || !studio.arrangement.enabled || isSequenced(track)} title={isSequenced(track) ? 'Switch to normal playback to split audio' : 'Set the playhead inside this clip, then split'} aria-label={'Split ' + track.name + ' at playhead'} onClick={() => studio.splitClip(track.id)}>Split at playhead</button>
       <button type="button" disabled={studio.busy} aria-expanded={studio.editorId === track.id && studio.editorLocation === 'arrangement'} aria-label={'Edit audio for ' + track.name} onClick={() => studio.editorId === track.id && studio.editorLocation === 'arrangement' ? studio.closeClip() : studio.openClip(track.id, 'arrangement')}>Edit audio</button>
@@ -89,7 +92,7 @@ function ArrangementRow({ track, studio, cursor, snap }) {
   </article>;
 }
 
-function TimeRuler({ studio }) {
+function TimeRuler({ studio, view, onReveal }) {
   const duration = studio.arrangement.duration;
   const position = studio.arrangement.enabled ? Math.min(duration, studio.elapsed) : 0;
   const disabled = studio.booting || studio.importing || studio.projectBusy || !studio.tracks.length;
@@ -102,25 +105,46 @@ function TimeRuler({ studio }) {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault();if (!disabled) void studio.seekArrangement(position);return; }
     if (next === undefined) return;
     event.preventDefault();
-    if (!disabled) void studio.seekArrangement(Math.max(0, Math.min(next, duration)), false);
+    if (!disabled) { const at = Math.max(0, Math.min(next, duration));onReveal(at);void studio.seekArrangement(at, false); }
   }
   return <>
     <p className="arrangement-seek-help" id="arrangement-seek-help">Click the ruler to listen from there.</p>
     <div className="arrangement-ruler" role="slider" tabIndex={disabled ? -1 : 0} aria-label="Arrangement play from position" aria-describedby="arrangement-seek-help"
-      aria-disabled={disabled} aria-valuemin={0} aria-valuemax={duration} aria-valuenow={Number(position.toFixed(2))} aria-valuetext={position.toFixed(2) + ' seconds'} onKeyDown={key}
-      onClick={(event) => { if (disabled) return;event.currentTarget.focus();const box = event.currentTarget.getBoundingClientRect();void studio.seekArrangement(Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * duration); }}>
-      {[0, .25, .5, .75, 1].map((fraction) => <span key={fraction} aria-hidden="true">{clockTime(duration * fraction, 2)}</span>)}
-      <span className="ruler-playhead" style={{ left: position / duration * 100 + '%' }} aria-hidden="true" />
+      aria-disabled={disabled} aria-valuemin={0} aria-valuemax={duration} aria-valuenow={Number(position.toFixed(2))} aria-valuetext={clockTime(position, 2)} onKeyDown={key}
+      onClick={(event) => { if (disabled) return;event.currentTarget.focus();const box = event.currentTarget.getBoundingClientRect();void studio.seekArrangement(timelineTime((event.clientX - box.left) / box.width, view)); }}>
+      {[0, .25, .5, .75, 1].map((fraction) => <span key={fraction} aria-hidden="true">{clockTime(timelineTime(fraction, view), view.end - view.start < 20 ? 2 : 0)}</span>)}
+      {position >= view.start && position <= view.end && <span className="ruler-playhead" style={{ left: timelinePosition(position, view) + '%' }} aria-hidden="true" />}
     </div>
   </>;
 }
 
 export default function Arrangement({ studio }) {
   const [error, setError] = useState('');
-  const [snap, setSnap] = useState(true);
+  const [snap, setSnap] = useState('off');
+  const [viewport, setViewport] = useState(null);
   const active = !studio.loopSection.enabled && studio.arrangement.enabled && (studio.status === 'playing' || studio.status === 'loading');
   const duration = studio.arrangement.duration;
-  const cursor = studio.arrangement.enabled ? Math.min(100, Math.max(0, studio.elapsed / duration * 100)) : null;
+  const view = timelineView(viewport, duration), span = view.end - view.start;
+  const snapSize = snap === 'beats' ? 60 / studio.bpm : snap === 'seconds' ? 1 : 0;
+  const cursor = studio.arrangement.enabled ? Math.min(duration, Math.max(0, studio.elapsed)) : null;
+  const zoomAnchor = cursor !== null && cursor >= view.start && cursor <= view.end ? cursor : (view.start + view.end) / 2;
+  const selected = studio.tracks.find(track => track.id === studio.selectedClipId);
+  const selectedSection = patternGroups(studio.tracks, studio.bpm).find(block => block.id === studio.selectedClipId);
+  function focusSelection() {
+    let window = selectedSection?.placement;
+    if (selected) {
+      window = arrangementWindow(selected, { ...studio.arrangement, enabled: true });
+      if (!selected.loop && !isSequenced(selected)) {
+        const sourceDuration = studio.details[selected.id]?.duration;
+        const length = sourceDuration ? clipRegion(selected, sourceDuration).length : selected.clipEnd != null ? selected.clipEnd - (selected.clipStart || 0) : null;
+        if (length != null) window = { ...window, end: Math.min(window.end, window.start + length - (selected.sourceOffset || 0)) };
+      }
+    }
+    if (window) setViewport(fitTimelineSelection(window, duration));
+  }
+  function reveal(time) {
+    if (time < view.start || time > view.end) setViewport(timelineView({ start: time - span / 2, end: time + span / 2 }, duration));
+  }
   async function play() {
     setError('');
     try { await studio.playArrangement(); } catch (problem) { setError(problem.message); }
@@ -133,14 +157,18 @@ export default function Arrangement({ studio }) {
       <div className="arrangement-position"><span className={studio.arrangement.enabled ? 'arrangement-mode is-on' : 'arrangement-mode'}>{studio.arrangement.enabled ? 'Timeline on' : 'Free mix mode'}</span>
         <output aria-label="Arrangement playback position">{formatTime(studio.arrangement.enabled ? studio.elapsed : 0)} / {formatTime(duration)}</output>
         <span>{studio.arrangement.enabled && studio.status === 'finished' ? 'Finished. Press Play to start again.' : studio.loopSection.enabled ? 'Looping ' + clockTime(studio.loopSection.start, 2) + '–' + clockTime(studio.loopSection.end, 2) : 'Stops at the end.'}</span></div></div>
-    <div className="timeline-instructions"><p id="timeline-help">Drag to move. Pull an edge to trim. Rhythm sections move and repeat in whole bars.</p><label><input type="checkbox" checked={snap} onChange={(event) => setSnap(event.target.checked)} />Snap to beats</label></div>
+    <div className="timeline-instructions"><p id="timeline-help">Select a clip to edit it. Drag to move; pull an edge to trim.</p><label>Snap<select aria-label="Timeline snap" value={snap} onChange={event => setSnap(event.target.value)}><option value="off">Off</option><option value="seconds">Seconds</option><option value="beats">Beats</option></select></label></div>
     <div className="arrangement-listen-tools">
       {studio.tracks.some((track) => track.solo) && <button type="button" disabled={studio.projectBusy} onClick={studio.clearSolos}>Clear solos</button>}</div>
     <div className="arrangement-options"><details className="arrangement-source-pool"><summary>Add another clip</summary><SourcePool studio={studio} /></details>
-    <details className="loop-listening" open={studio.loopSection.enabled || undefined}><summary>Loop a section{studio.loopSection.enabled ? ' · ' + clockTime(studio.loopSection.start, 2) + '–' + clockTime(studio.loopSection.end, 2) : ''}</summary><ArrangementSection studio={studio} snap={snap} /></details></div>
-    <TimeRuler studio={studio} />
-    <div className="arrangement-layers">{studio.tracks.filter(track => !track.patternBlock).map((track) => <ArrangementRow key={track.id} track={track} studio={studio} cursor={cursor} snap={snap} />)}
-      {patternGroups(studio.tracks, studio.bpm).map(block => <PatternSectionRow key={block.id} block={block} studio={studio} cursor={cursor} />)}
+    <details className="loop-listening" open={studio.loopSection.enabled || undefined}><summary>Loop a listening section{studio.loopSection.enabled ? ' · ' + clockTime(studio.loopSection.start, 2) + '–' + clockTime(studio.loopSection.end, 2) : ''}</summary><ArrangementSection studio={studio} view={view} snapSize={snapSize} /></details></div>
+    <div className="timeline-view-tools" role="group" aria-label="Timeline view">
+      <div><button type="button" disabled={span <= .25001} onClick={() => setViewport(zoomTimeline(view, duration, .5, zoomAnchor))}>Zoom in</button><button type="button" disabled={span >= duration - 1e-7} onClick={() => setViewport(zoomTimeline(view, duration, 2))}>Zoom out</button><button type="button" disabled={!selected && !selectedSection} onClick={focusSelection}>Show selected clip</button><button type="button" disabled={span >= duration - 1e-7} onClick={() => setViewport(null)}>Full song</button></div>
+      <div className="timeline-view-range"><button type="button" aria-label="View earlier in timeline" disabled={view.start <= 1e-7} onClick={() => setViewport(panTimeline(view, duration, -1))}>←</button><output aria-label="Visible timeline range">{clockTime(view.start, 2)}–{clockTime(view.end, 2)}</output><button type="button" aria-label="View later in timeline" disabled={view.end >= duration - 1e-7} onClick={() => setViewport(panTimeline(view, duration, 1))}>→</button></div>
+    </div>
+    <TimeRuler studio={studio} view={view} onReveal={reveal} />
+    <div className="arrangement-layers">{studio.tracks.filter(track => !track.patternBlock).map((track) => <ArrangementRow key={track.id} track={track} studio={studio} cursor={cursor} view={view} snapSize={snapSize} />)}
+      {patternGroups(studio.tracks, studio.bpm).map(block => <PatternSectionRow key={block.id} block={block} studio={studio} cursor={cursor} view={view} />)}
       {!studio.tracks.length && <p className="arrangement-help">Add a sound in the studio to start arranging.</p>}</div>
     <ArrangementExport key={studio.activeProject?.id || 'workspace'} studio={studio} />
     {error && <p className="arrangement-error" role="alert">{error}</p>}

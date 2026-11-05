@@ -1,0 +1,66 @@
+/* Keep editing controls close to the sound; show details when requested. */
+.app-shell .page-heading { padding-block: 20px 18px; }
+.app-shell .page-heading h1 { margin-block: 6px; }
+.app-shell .page-heading > div > .eyebrow { display: none; }
+.app-shell .page-heading > div > p:last-child { font-size: 13px; line-height: 1.55; }
+.page-rhythm .sequencer { padding: 16px; }
+.page-rhythm .pattern-bank { margin-bottom: 12px; padding: 12px; }
+.pattern-bank .pattern-tabs { margin-bottom: 8px; gap: 6px; }
+.pattern-bank .pattern-bank-heading { gap: 8px 12px; }
+.pattern-bank-heading > strong { color: #eee; font-size: 14px; flex: 1; min-width: min(100%, 170px); overflow-wrap: anywhere; }
+.pattern-bank-heading .pattern-bank-actions { flex: none; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.pattern-bank .pattern-copy-notice { margin: 8px 0 0; color: #b9b9b9; font-size: 12px; }
+.pattern-placement-panel { padding-top: 16px; margin-top: 16px; border-top: 1px solid #3a3a3a; scroll-margin-block: 90px calc(var(--player-height) + 20px); }
+.pattern-placement-panel > h3 { color: #eee; font-size: 16px; }
+.pattern-placement-panel > p { margin-top: 8px; color: #aaa; font-size: 12px; line-height: 1.6; }
+.pattern-placement-panel .make-variation { margin-top: 10px; }
+.pattern-placement-panel :is(input, button, a) { min-height: 44px; }
+.pattern-placement-panel input { max-width: 100%; background: #0b0b0b; color: #eee; border: 1px solid #494949; border-radius: 7px; padding: 8px; }
+.pattern-placement-panel a { display: inline-flex; align-items: center; color: var(--accent); font-size: 12px; }
+.pattern-placement-panel .pattern-bank-more { margin-top: 8px; }
+.pattern-placement-panel .pattern-bank-more p { color: #aaa; font-size: 12px; line-height: 1.7; margin: 8px 0; }
+.pattern-placement-panel .pattern-bank-more summary { min-height: 44px; padding-block: 12px; }
+.page-rhythm .sequencer-toolbar { gap: 12px; padding-block: 10px; margin-top: 10px; }
+.page-rhythm .sequencer-meter { gap: 4px; font-size: 12px; }
+.rhythm-speed { margin-left: auto; min-width: 0; }
+.rhythm-speed > summary, .drum-additions > summary, .save-new-copy > summary { color: #c5c5c5; cursor: pointer; font-size: 13px; min-height: 44px; padding-block: 12px; }
+.rhythm-speed[open] { flex-basis: 100%; }
+.rhythm-speed .tempo-form { max-width: 320px; margin: 4px 0 6px; }
+.drum-additions { margin-block: 4px; }
+.drum-additions .drum-starter { margin-top: 0; }
+.page-rhythm .drum-starter { margin-top: 0; padding: 12px; }
+.page-rhythm .sequencer-feedback { padding-block: 9px; }
+.page-rhythm .sequence-row { padding: 14px; }
+.page-rhythm .sequence-beat-groups { margin-top: 12px; gap: 12px; }
+.page-rhythm .sequence-row-footer { margin-top: 10px; gap: 8px 12px; }
+.preview-return-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.workspace-isolated-preview .preview-return-actions button { min-height: 40px; }
+.workspace-isolated-preview .return-to-mix { color: #131313; background: var(--accent); border-color: var(--accent); }
+.save-new-copy { margin-top: 12px; max-width: 480px; }
+.save-new-copy > .save-mix-form { margin-top: 6px; }
+.app-shell .saved-current .save-update:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #131313; }
+.save-new-copy > summary:focus-visible, .rhythm-speed > summary:focus-visible, .drum-additions > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .app-shell .page-heading { padding-block: 12px 14px; }
+  .app-shell .page-heading h1 { margin-top: 0; font-size: 27px; }
+  .app-shell .page-heading > div > p:last-child { font-size: 12px; }
+  .page-rhythm .sequencer { padding: 12px; }
+  .page-rhythm .pattern-bank { padding: 10px; }
+  .page-rhythm .sequencer-toolbar { align-items: center; gap: 6px 12px; }
+  .page-rhythm .sequencer-meter { width: auto; flex: 1; }
+  .page-rhythm .sequencer-playback { width: 100%; }
+  .page-rhythm .rhythm-speed { margin-left: 0; }
+  .page-rhythm .sequence-row { padding: 12px 10px; }
+  .page-rhythm .sequence-tools { width: auto; }
+  .page-rhythm .sequence-row-heading { gap: 8px; }
+  .page-rhythm .sequence-sound-icon { display: none; }
+  .page-rhythm .sequence-sound h3 { font-size: 15px; }
+  .page-rhythm .sequence-beat-groups { gap: 10px; }
+  .page-rhythm .sequence-beat-label { margin-bottom: 5px; }
+  .workspace-isolated-preview { justify-content: flex-start; gap: 6px; padding: 8px 12px; }
+  .workspace-isolated-preview > span { flex: 1 1 180px; font-size: 12px; line-height: 1.4; }
+  .workspace-isolated-preview .preview-return-actions { gap: 6px; }
+  .workspace-isolated-preview .preview-return-actions button { min-height: 44px; }
+  .workspace-summary > div > span { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

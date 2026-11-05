@@ -1,8 +1,8 @@
-import { barSeconds, capturePattern, copyPattern as copyRhythmPattern, editBlock, patternName, patternSourceCount, placePattern, retimeBlocks, selectedPart, copyBlock } from '../lib/patternSections.js';
+import { barSeconds, blockWindow, capturePattern, copyPattern as copyRhythmPattern, editBlock, patternName, patternSourceCount, placePattern, retimeBlocks, selectedPart, copyBlock } from '../lib/patternSections.js';
 import { MixHistory } from '../lib/mixHistory.js';
 import { clipName, ensureClipSlot, sourceId } from '../lib/audioSources.js';
 import { DRUMS, drumKit, drumTrack } from '../lib/drumStarter.js';
-import { duplicateClip, placedClip, splitClip, trimmedClip } from '../lib/clipInstances.js';
+import { duplicateClip, eventClip, placedClip, splitClip, trimmedClip } from '../lib/clipInstances.js';
 import { initialLoopRegion, validateLoopRegion } from '../lib/loopRegion.js';
 import { checkExportCanceled, exportFilename, renderArrangement } from '../lib/renderArrangement.js';
 import { enableRhythmTrack, rhythmMetadata, rhythmRegion } from '../lib/rhythmState.js';
@@ -15,11 +15,12 @@ import { AUDIO_MEMORY_LIMIT, AudioEngine } from '../lib/audioEngine.js';
 import { deleteUnusedAudio, readAudio, readSavedMix, readSavedMixes, restoreSavedMix, saveAudio, writeSavedMix } from '../lib/audioStorage.js';
 import { backupFilename, createProjectBackup, inspectProjectBackup, restoredProject } from '../lib/projectBackup.js';
 import { SCENES, sceneMix, scenePreviewMix } from '../lib/scenes.js';
-import { STUDIO_STORAGE_KEY, defaultMix, loadMix, serializeMix, validateAudioFile, validateMix } from '../lib/studioState.js';
+import { STUDIO_STORAGE_KEY, loadMix, serializeMix, validateAudioFile, validateMix } from '../lib/studioState.js';
 import { MAX_SAVED_MIXES, mixName, referencedAudio, sameMix } from '../lib/savedMixes.js';
+import { commitEditorPlacement, duplicateEditorClipAt, editEditorLane, editorLaneId, editorTimelineMix, emptyEditorMix, fitEditorSongEnd, setEditorClipLoop } from '../lib/editorTracks.js';
 
 function initialMix() {
-  try { return loadMix(localStorage); } catch { return defaultMix(); }
+  try { return localStorage.getItem(STUDIO_STORAGE_KEY) || localStorage.getItem('nature-mixer-settings-v1') ? loadMix(localStorage) : emptyEditorMix(); } catch { return emptyEditorMix(); }
 }
 
 function initialProjectId() {
@@ -306,29 +307,36 @@ export default function useStudio() {
   }
 
   async function addSound(sound) {
-    if (projectLock.current) return;
-    stopPatternPreview();
+    if (projectLock.current || importLock.current || booting) return;
     const current = mixRef.current;
-    if (current.tracks.some((track) => track.id === sound.id)) return;
     if (current.sources.some((source) => source.id === sound.id)) return addSourceClip(sound.id);
     if (current.sources.length >= MAX_TRACKS || current.tracks.length >= MAX_CLIPS) { setNotice('A workspace supports 8 source recordings and 32 clips. Remove an unused source or clip first.'); return; }
-    setNotice('');
-    const track = createTrack(sound);
-    if (statusRef.current === 'playing') {
-      try { await engine.current.load({ ...track, src: sound.src }); }
-      catch (error) { if (alive.current) setNotice(error.message); return; }
-    }
-    if (alive.current && !projectLock.current) setMix((previous) => previous.tracks.some((item) => item.id === track.id) || previous.sources.length >= MAX_TRACKS || previous.tracks.length >= MAX_CLIPS
-      ? previous : { ...previous, sources: [...previous.sources, { id: sound.id, catalogId: sound.id, name: sound.name, role: sound.role }], tracks: [...previous.tracks, { ...track, sourceId: sound.id }] }, 'Add library sound');
+    projectLock.current = true;setProjectBusy(true);stopPreview();setNotice('');
+    try {
+      const at = engine.current.position();
+      if (at >= 299.95) throw new Error('Move the playhead earlier before adding audio. Audio must start before 5:00.');
+      const track = { ...createTrack(sound), laneId: sound.id, laneName: sound.name, sourceId: sound.id, loop: false };
+      const buffer = await engine.current.load({ ...track, src: sound.src });
+      if (!alive.current) return;
+      track.placement = { start: at, end: Math.min(300, at + Math.max(.05, buffer.duration)), fadeIn: 0, fadeOut: 0 };
+      const next = { ...mixRef.current, arrangement: { enabled: true, duration: Math.max(mixRef.current.arrangement.duration, track.placement.end) },
+        sources: [...mixRef.current.sources, { id: sound.id, catalogId: sound.id, name: sound.name, role: sound.role }], tracks: [...mixRef.current.tracks, track] };
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      changeMix(next, 'Add library sound');focusClip(track.id);
+      await rescheduleMix(next, position, resume);
+    } catch (error) { if (alive.current) setNotice(error.message); }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
   }
 
-  async function importFiles(selected, role) {
+  async function importFiles(selected, role, repeat = false, at = engine.current?.position() || 0) {
     if (importLock.current || projectLock.current || !selected.length) return;
     stopPreview();
     importLock.current = true;beginEditGesture('import');
     setImporting(true);
     setNotice('');
     const player = engine.current;
+    const position = player.position(), resume = statusRef.current === 'playing';
+    player.pause();setElapsed(position);
     let slots = Math.min(MAX_TRACKS - mixRef.current.sources.length, MAX_CLIPS - mixRef.current.tracks.length);
     const errors = [];
     let imported = 0;
@@ -338,14 +346,19 @@ export default function useStudio() {
         const id = 'custom-' + crypto.randomUUID();
         try {
           validateAudioFile(file);
-          const track = { id, catalogId: null, name: file.name, role, volume: 50, muted: false, solo: false, loop: role === 'nature' };
-          await player.load(track, file);
+          if (!Number.isFinite(at) || at < 0 || at >= 299.95) throw new Error('Move the playhead earlier before importing. Audio must start before 5:00.');
+          const track = { id, laneId: id, laneName: file.name.slice(0, 160), catalogId: null, name: file.name.slice(0, 160), role, volume: 50, muted: false, solo: false, loop: repeat };
+          const buffer = await player.load(track, file);
+          const end = Math.min(300, at + Math.max(.05, buffer.duration));
+          track.placement = { start: at, end, fadeIn: 0, fadeOut: 0 };
+          if (at + buffer.duration > 300) errors.push(file.name + ': the first ' + (300 - at).toFixed(1) + ' seconds were placed. The full recording is available in Edit audio.');
           if (!alive.current || player.disposed) return;
           try { await saveAudio(id, file); }
           catch { if (alive.current) setStorageNotice('An imported sound could not be saved. It is available in this tab; keep the original file to import again.'); }
           if (!alive.current || player.disposed) return;
           files.current[sourceId(track)] = file;
-          setMix((previous) => ({ ...previous, sources: [...previous.sources, { id, catalogId: null, name: file.name, role }], tracks: [...previous.tracks, { ...track, sourceId: id }] }), 'Import audio', 'import');
+          setMix((previous) => ({ ...previous, arrangement: { enabled: true, duration: Math.max(previous.arrangement.duration, end) }, sources: [...previous.sources, { id, catalogId: null, name: track.name, role }], tracks: [...previous.tracks, { ...track, sourceId: id }] }), 'Import audio', 'import');
+          selectClip(id);
           imported += 1;
           slots -= 1;
         } catch (error) {
@@ -353,7 +366,10 @@ export default function useStudio() {
           errors.push(file.name + ': ' + error.message);
         }
       }
-      if (alive.current) setNotice(errors.length ? errors.join(' ') : imported + (imported === 1 ? ' sound added to your mix.' : ' sounds added to your mix.'));
+      if (alive.current) {
+        await rescheduleMix(mixRef.current, position, resume);
+        setNotice(errors.length ? errors.join(' ') : imported + (imported === 1 ? ' sound added to your mix.' : ' sounds added to your mix.'));
+      }
     } finally {
       importLock.current = false;endEditGesture('import');
       if (alive.current) setImporting(false);
@@ -381,7 +397,138 @@ export default function useStudio() {
     const player = engine.current;
     player.pause();player.setArrangement(next.arrangement);player.setBpm(next.bpm);
     player.setTracks(withSources(next.tracks));player.setMaster(next.master);player.seek(position);
-    if (resume) await player.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
+    // A shorter one-shot edit can put the cursor at the new end; do not restart it implicitly.
+    if (resume && statusRef.current !== 'finished') await player.play(withSources(next.tracks), files.current, next.master, next.bpm, next.arrangement);
+  }
+
+  async function editorMode() {
+    if (projectLock.current || importLock.current || booting) return false;
+    if (mixRef.current.arrangement.enabled) return true;
+    projectLock.current = true;setProjectBusy(true);stopPreview();
+    try {
+      const durations = {};
+      for (const track of withSources(mixRef.current.tracks)) {
+        if (track.loop || sequenceMetadata(track).enabled || Number.isFinite(track.placement?.end)) continue;
+        durations[track.id] = (await engine.current.load(track, files.current[sourceId(track)])).duration;
+        if (!alive.current) return false;
+      }
+      const next = editorTimelineMix(mixRef.current, durations);
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      changeMix(next, undefined, undefined, false);
+      await rescheduleMix(next, Math.min(position, next.arrangement.duration), resume);
+      if (Object.values(durations).some(duration => duration > 300)) setNotice('The timeline is limited to 5:00. The full original recordings remain available in Edit audio.');
+      return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  async function commitEditorClip(id, placement, action = 'move', targetLaneId) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    projectLock.current = true;setProjectBusy(true);stopPreview();
+    try {
+      const track = withSources(mixRef.current.tracks).find(clip => clip.id === id && !clip.patternBlock);
+      if (!track) return false;
+      const buffer = await engine.current.load(track, files.current[sourceId(track)]);
+      if (!alive.current) return false;
+      const next = commitEditorPlacement(mixRef.current, id, placement, buffer.duration, action, targetLaneId);
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      changeMix(next, action === 'repeat' ? 'Repeat clip' : ['start', 'end'].includes(action) ? 'Trim clip' : action.startsWith('fade') ? 'Clip fades' : 'Move clip', 'placement:' + id);
+      selectClip(id);await rescheduleMix(next, position, resume);
+      setElapsed(engine.current.position());return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  async function fitSongEnd() {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading' || !mixRef.current.tracks.length) return false;
+    projectLock.current = true;setProjectBusy(true);
+    try {
+      const durations = {};
+      // Validate every needed recording before changing metadata or playback.
+      // The engine shares cached buffers and serializes remaining decodes.
+      for (const track of withSources(mixRef.current.tracks)) {
+        if (track.loop || track.patternBlock || sequenceMetadata(track).enabled) continue;
+        durations[track.id] = (await engine.current.load(track, files.current[sourceId(track)])).duration;
+        if (!alive.current) return false;
+      }
+      const next = fitEditorSongEnd(mixRef.current, durations);
+      stopPreview();resetLoop(next.arrangement.duration);engine.current.restart();
+      setElapsed(0);setCurrentStep(null);changeMix(next, 'Fit song end');
+      setNotice('Song end fitted to the last audible clip. Playback is paused at the start.');
+      return true;
+    } catch (error) { if (alive.current) setNotice(error.message || 'The song end could not be fitted. Your mix has been kept.');return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  async function setClipLoop(id, enabled) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading' || typeof enabled !== 'boolean') return false;
+    const original = mixRef.current.tracks.find(clip => clip.id === id && !clip.patternBlock);
+    if (!original || original.loop === enabled) return false;
+    projectLock.current = true;setProjectBusy(true);
+    try {
+      const duration = enabled ? (await engine.current.load(withSources([original])[0], files.current[sourceId(original)])).duration : undefined;
+      if (!alive.current) return false;
+      const next = setEditorClipLoop(mixRef.current, id, enabled, duration);
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      stopPreview();
+      changeMix(next, enabled ? 'Repeat clip' : 'Stop repeating clip');
+      await rescheduleMix(next, position, resume);return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  function updateLane(id, changes) {
+    if (projectLock.current || importLock.current || booting) return false;
+    try {
+      const next = editEditorLane(mixRef.current, id, changes);
+      changeMix(next, changes.volume !== undefined ? 'Track volume' : changes.name !== undefined ? 'Rename track' : 'Track routing', changes.volume !== undefined ? 'lane-level:' + id : undefined);
+      return true;
+    } catch (error) { setNotice(error.message);return false; }
+  }
+
+  async function removeLane(id) {
+    if (projectLock.current || importLock.current || booting) return false;
+    projectLock.current = true;setProjectBusy(true);
+    try {
+      const removed = mixRef.current.tracks.filter(clip => !clip.patternBlock && editorLaneId(clip) === id);
+      if (!removed.length) return false;
+      const ids = new Set(removed.map(clip => clip.id));
+      if (ids.has(editorId)) closeClip();
+      for (const clip of removed) engine.current.forget(clip.id);
+      const next = { ...mixRef.current, tracks: mixRef.current.tracks.filter(clip => !ids.has(clip.id)) };
+      changeMix(next, 'Delete track');
+      setDetails(previous => Object.fromEntries(Object.entries(previous).filter(([clipId]) => !ids.has(clipId))));
+      if (!storageBlocked) persistWorkspace(next, activeProjectId);
+      return true;
+    } finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  async function duplicateSelectedClipAt(id, at) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    projectLock.current = true;setProjectBusy(true);stopPreview();
+    try {
+      const current = mixRef.current, track = withSources(current.tracks).find(clip => clip.id === id && !clip.patternBlock);
+      if (!track) return false;
+      const buffer = await engine.current.load(track, files.current[sourceId(track)]);
+      if (!alive.current) return false;
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      const next = duplicateEditorClipAt(current, id, at, buffer.duration, 'custom-clip-' + crypto.randomUUID());
+      closeClip();changeMix(next, 'Duplicate clip');
+      await rescheduleMix(next, position, resume);focusClip(next.tracks.at(-1).id);
+      return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  function newProject() {
+    if (projectLock.current || importLock.current || booting) return false;
+    closeClip();
+    const next = emptyEditorMix();
+    resetLoop(next.arrangement.duration);engine.current.restart();engine.current.clearAudio();setElapsed(0);setDetails({});
+    changeMix(next, 'New project');setActivePatternId(null);setActiveProjectId(null);
+    setNotice('New empty project. Your saved projects are kept. Undo restores the previous workspace.');
+    persistWorkspace(next, null);
+    return true;
   }
 
   function focusClip(id) {
@@ -400,7 +547,7 @@ export default function useStudio() {
     });
   }
 
-  async function addSourceClip(id) {
+  async function addSourceClip(id, at = engine.current?.position() || 0) {
     if (projectLock.current || importLock.current || booting) return;
     stopPatternPreview();
     projectLock.current = true;setProjectBusy(true);
@@ -408,13 +555,17 @@ export default function useStudio() {
       const current = mixRef.current;ensureClipSlot(current);
       const source = current.sources.find((item) => item.id === id);
       if (!source) return;
+      if (!Number.isFinite(at) || at < 0 || at >= 299.95) throw new Error('Move the playhead earlier before adding audio. Audio must start before 5:00.');
       const name = current.tracks.some((track) => track.name === source.name) ? clipName(source.name, current.tracks) : source.name;
       const track = { id: 'custom-clip-' + crypto.randomUUID(), sourceId: id, catalogId: source.catalogId, name, role: source.role,
-        volume: 50, muted: false, solo: false, loop: source.role === 'nature',
-        placement: { start: current.arrangement.enabled && elapsed < current.arrangement.duration - .05 ? elapsed : 0, end: null, fadeIn: 0, fadeOut: 0 } };
-      await engine.current.load(withSources([track])[0], files.current[id]);
+        volume: 50, muted: false, solo: false, loop: false };
+      track.laneId = track.id;track.laneName = name;
+      const buffer = await engine.current.load(withSources([track])[0], files.current[id]);
       if (!alive.current) return;
-      changeMix({ ...current, tracks: [...current.tracks, track] }, 'Add clip');focusClip(track.id);
+      track.placement = { start: at, end: Math.min(300, at + Math.max(.05, buffer.duration)), fadeIn: 0, fadeOut: 0 };
+      const next = { ...mixRef.current, arrangement: { enabled: true, duration: Math.max(mixRef.current.arrangement.duration, track.placement.end) }, tracks: [...mixRef.current.tracks, track] };
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      changeMix(next, 'Add clip');focusClip(track.id);await rescheduleMix(next, position, resume);
       setNotice('Added a new clip from ' + source.name + '. Its audio is shared; edits are independent.');
     } catch (error) { if (alive.current) setNotice(error.message); }
     finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
@@ -454,6 +605,25 @@ export default function useStudio() {
       const newClip = next.tracks.find((item) => !current.tracks.some((old) => old.id === item.id));
       if (newClip) focusClip(newClip.id);
       setNotice(action === 'split' ? 'Clip split at the playhead. Both parts share the original recording.' : 'Clip duplicated at the same position. Move or edit the copy independently.');
+      return true;
+    } catch (error) { if (alive.current) setNotice(error.message);return false; }
+    finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
+  }
+
+  async function createEvent(id, start, end) {
+    if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    projectLock.current = true;setProjectBusy(true);
+    const player = engine.current;
+    try {
+      const current = mixRef.current, position = player.position(), resume = statusRef.current === 'playing';
+      const duration = player.buffers.get(id)?.duration;
+      const next = eventClip(current, id, start, end, position, duration, 'custom-clip-' + crypto.randomUUID());
+      const added = next.tracks.at(-1);
+      await player.load(withSources([added])[0], files.current[sourceId(added)]);
+      if (!alive.current || player.disposed) return false;
+      closeClip();changeMix(next, 'Create sound event');
+      await rescheduleMix(next, position, resume);focusClip(added.id);
+      setNotice('Sound event added at the mix cursor in Arrangement. Your original clip is kept.');
       return true;
     } catch (error) { if (alive.current) setNotice(error.message);return false; }
     finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
@@ -521,17 +691,19 @@ export default function useStudio() {
     setNotice('');
   }
 
-  function setBpm(value) {
+  async function setBpm(value) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
     const bpm = validBpm(value), current = mixRef.current;
     if (bpm === (current.bpm ?? DEFAULT_BPM)) return;
     stopPreview();
     if (current.tracks.some(track => track.patternBlock)) {
+      projectLock.current = true;setProjectBusy(true);
       try {
-        const next = retimeBlocks(current, bpm), position = engine.current.position();
-        engine.current.pause();changeMix(next, 'Change speed');void rescheduleMix(next, position, false);
-        setNotice('Speed updated. Rhythm sections keep their bars; audio clips keep their times. Press Play to listen.');
+        const next = retimeBlocks(current, bpm), position = engine.current.position(), resume = statusRef.current === 'playing';
+        changeMix(next, 'Change tempo');await rescheduleMix(next, position, resume);
+        setNotice('Tempo updated. Beats keep their bar positions; audio clips keep their times.');
       } catch (error) { setNotice(error.message); }
+      finally { projectLock.current = false;if (alive.current) setProjectBusy(false); }
     } else { setMix(previous => ({ ...previous, bpm }), 'Change speed');setNotice(''); }
   }
 
@@ -562,7 +734,7 @@ export default function useStudio() {
     finally { importLock.current = false; if (alive.current) setRhythmBusy(false); }
   }
 
-  async function addDrumBeat(ids = DRUMS.map((drum) => drum.id)) {
+  async function addDrumBeat(ids = DRUMS.map((drum) => drum.id), { section = false } = {}) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return;
     if (!ids.length || new Set(ids).size !== ids.length || ids.some((id) => !DRUMS.some((drum) => drum.id === id))) return;
     const current = mixRef.current;
@@ -573,11 +745,15 @@ export default function useStudio() {
     const added = [];
     let committed = false;
     try {
+      const cursor = engine.current.position(), resume = statusRef.current === 'playing';
+      const block = section ? { id: 'block-' + crypto.randomUUID(), name: 'Drums', startBar: Math.floor(cursor / barSeconds(current.bpm)), bars: 4, volume: 100, muted: false } : null;
+      const placement = block && blockWindow(block, current.bpm);
       await engine.current.ensureContext().resume();
       const { drums, file } = await drumKit(ids);
       const source = { id: 'custom-' + crypto.randomUUID(), name: file.name, role: 'music', catalogId: null };
       for (const drum of drums) {
         const track = drumTrack(drum, 'custom-clip-' + crypto.randomUUID(), source.id, current.tracks.some((item) => item.solo));
+        if (block) { track.patternBlock = { ...block };track.placement = { ...placement }; }
         if (mixRef.current.tracks.some((item) => item.name === track.name)) track.name = clipName(track.name, mixRef.current.tracks);
         added.push(track);
         await engine.current.load(track, file);
@@ -587,11 +763,14 @@ export default function useStudio() {
       if (!alive.current) return;
       // Three editable clips share one recording, one persisted WAV and one decoded buffer.
       files.current[source.id] = file;
-      const next = { ...mixRef.current, sources: [...mixRef.current.sources, source], tracks: [...mixRef.current.tracks, ...added] };
-      changeMix(next, 'Add drum beat'); committed = true; focusRhythm(added[0].id);
+      const next = { ...mixRef.current, ...(block ? { arrangement: { enabled: true, duration: Math.max(mixRef.current.arrangement.duration, placement.end) } } : {}),
+        sources: [...mixRef.current.sources, source], tracks: [...mixRef.current.tracks, ...added] };
+      changeMix(next, 'Add drum beat'); committed = true;
+      if (block) selectClip(block.id);else focusRhythm(added[0].id);
       const position = engine.current.position();
-      await rescheduleMix(next, next.arrangement.enabled && position >= next.arrangement.duration ? 0 : position, true);
-      setNotice('Drum beat added. Tap lit steps to remove hits, or dark steps to add them. Existing clips are kept.' + (!next.master ? ' Raise Master to hear it.' : ''));
+      await rescheduleMix(next, next.arrangement.enabled && position >= next.arrangement.duration ? 0 : position, block ? resume : true);
+      setNotice(block ? 'Drums added at the playhead. Edit the steps below; Play listens with your other tracks.' : 'Drum beat added. Tap lit steps to remove hits, or dark steps to add them. Existing clips are kept.' + (!next.master ? ' Raise Master to hear it.' : ''));
+      return block?.id || true;
     } catch (error) { if (alive.current) setNotice(error.message || 'Could not add the drum beat.'); }
     finally {
       if (!committed) for (const track of added) engine.current.forget(track.id);
@@ -661,7 +840,7 @@ export default function useStudio() {
     if (projectLock.current || importLock.current) return;
     const duration = engine.current.buffers.get(id)?.duration;
     const region = validateRegion(start, end, duration);
-    if (location === 'arrangement') {
+    if (location !== 'sequencer') {
       const current = mixRef.current, position = engine.current.position(), resume = statusRef.current === 'playing';
       const next = { ...current, tracks: current.tracks.map((track) => track.id === id ? { ...track, ...(reset ? { clipStart: 0, clipEnd: null } : region), loop, sourceOffset: undefined, gainEnvelope: undefined } : track) };
       closeClip();changeMix(next, 'Choose audio range');
@@ -685,12 +864,6 @@ export default function useStudio() {
       setNotice('Sample ready. Hear rhythm previews this row; Play full mix includes your other clips.');
       return;
     }
-    engine.current.restart();
-    setElapsed(0);
-    setPreview(null);
-    updateTrack(id, { ...(reset ? { clipStart: 0, clipEnd: null } : region), sourceOffset: undefined, gainEnvelope: undefined, loop });
-    setNotice(reset ? 'Full recording restored. Press Play to listen.' : 'Clip applied. The mix starts at the beginning of each selected region.');
-    setEditorId(null);
   }
 
   function setArrangementLength(value) {
@@ -969,16 +1142,26 @@ export default function useStudio() {
     } catch (error) { setNotice(error.message);return false; }
   }
 
-  function updatePatternSection(id, changes, action) {
+  async function updatePatternSection(id, changes, action) {
     if (projectLock.current || importLock.current || booting || statusRef.current === 'loading') return false;
+    let locked = false;
     try {
       const current = mixRef.current;
-      const next = action === 'copy' ? copyBlock(current, id) : action === 'remove'
+      let next = action === 'copy' ? copyBlock(current, id) : action === 'remove'
         ? { ...current, tracks: current.tracks.filter(track => track.patternBlock?.id !== id) } : editBlock(current, id, changes);
-      stopPreview();changeMix(next, action === 'copy' ? 'Duplicate rhythm section' : action === 'remove' ? 'Remove rhythm section' : 'Edit rhythm section', changes?.volume !== undefined ? 'level:' + id : 'placement:' + id);
+      if (action === 'copy') {
+        const copied = next.tracks.at(-1).patternBlock;
+        next = editBlock(next, copied.id, { startBar: copied.startBar + copied.bars });
+      }
+      const reschedule = action === 'copy' || action === 'remove' || changes?.startBar !== undefined || changes?.bars !== undefined;
+      const position = engine.current.position(), resume = statusRef.current === 'playing';
+      if (reschedule) { projectLock.current = true;setProjectBusy(true);locked = true; }
+      stopPreview();changeMix(next, action === 'copy' ? 'Duplicate rhythm section' : action === 'remove' ? 'Remove rhythm section' : 'Edit rhythm section', changes?.volume !== undefined ? 'block-level:' + id : 'placement:' + id);
       selectClip(action === 'copy' ? next.tracks.at(-1).patternBlock.id : id);
+      if (reschedule) await rescheduleMix(next, position, resume);
       return true;
     } catch (error) { setNotice(error.message);return false; }
+    finally { if (locked) { projectLock.current = false;if (alive.current) setProjectBusy(false); } }
   }
 
   function soloPatternSection(id) {
@@ -1134,7 +1317,7 @@ export default function useStudio() {
     transfer, restoreInfo, discardProjectFile, cancelTransfer, downloadProject: () => transferAction('backup'),
     inspectProjectFile: (file) => transferAction('inspect', file), restoreProject: (name) => transferAction('restore', name),
     scenePreview, hearScene, stopScene, useScene,
-    editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createRhythm, addDrumBeat,
+    editorId, editorLocation, preview, openClip, closeClip, previewClip, previewSample, stopPreview, applyClip, createEvent, createRhythm, addDrumBeat,
     busy: booting || importing || rhythmBusy || projectBusy || status === 'loading', updateTrack, setMaster, togglePlayback, restartPlayback,
     setBpm,
     setSequenced: (id, enabled) => editPattern(id, (sequence) => ({ ...sequence, enabled })),
@@ -1142,6 +1325,7 @@ export default function useStudio() {
     quarterSteps: (id) => editPattern(id, (sequence) => ({ ...sequence, steps: Array.from({ length: 16 }, (_, index) => index % 4 === 0) })),
     clearSteps: (id) => editPattern(id, (sequence) => ({ ...sequence, steps: Array(16).fill(false) })),
     addSound, importFiles, removeTrack, addSourceClip, removeSource, duplicateClip: (id) => editClipInstance('duplicate', id), splitClip: (id) => editClipInstance('split', id), resetLevels, applyBlend,
+    editorMode, updateLane, removeLane, duplicateSelectedClipAt, commitEditorClip, setClipLoop, fitSongEnd, newProject, addEditorDrums: () => addDrumBeat(undefined, { section: true }),
     saveMix: (name) => projectAction('save', { id: 'mix-' + crypto.randomUUID(), name }),
     updateSavedMix: () => activeProject && projectAction('update', { id: activeProject.id }),
     openMix: (id) => projectAction('open', { id }),

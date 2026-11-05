@@ -21,6 +21,17 @@ export default function WorkspaceTransport({ studio }) {
   const sections = patternGroups(studio.tracks, studio.bpm);
   const clips = studio.tracks.filter(track => !track.patternBlock).length;
   const active = studio.status === 'playing' || studio.status === 'loading';
+  const isolated = studio.preview ? {
+    title: (studio.preview.kind === 'pattern' ? 'Rhythm preview' : 'Sample preview') + ' · ' + (selectedPart(studio, studio.preview.id)?.name || 'Selected audio'),
+  } : studio.patternPreview ? {
+    title: (studio.patternPreview.status === 'loading' ? 'Loading pattern' : 'Pattern preview') + ' · ' + (studio.patterns?.find(pattern => pattern.id === studio.patternPreview.id)?.name || 'Selected pattern'),
+  } : studio.scenePreview ? {
+    title: studio.scenePreview.status === 'loading' ? 'Loading scene preview' : 'Scene preview',
+  } : null;
+  function returnToMix() {
+    studio.stopPreview();
+    void studio.togglePlayback();
+  }
   const silent = !studio.master || studio.tracks.every((track) => !audibleGain(track, studio.tracks)
     || (isSequenced(track) && !sequenceMetadata(track).steps.some(Boolean)));
   const status = studio.booting ? 'Opening workspace' : studio.status === 'loading' ? 'Loading audio'
@@ -40,9 +51,7 @@ export default function WorkspaceTransport({ studio }) {
       <span className="workspace-playback-status" role="status"><span className={'status-dot ' + (studio.status === 'playing' ? 'is-playing' : '')} />{status}</span>
       <PlaybackSeek studio={studio} />
     </div>
-    {studio.preview && <div className="workspace-isolated-preview"><span role="status">{studio.preview.kind === 'pattern' ? 'Rhythm preview' : 'Sample preview'} · {selectedPart(studio, studio.preview.id)?.name || 'Selected audio'} · workspace paused</span><button type="button" onClick={studio.stopPreview}>Stop isolated preview</button></div>}
-    {studio.patternPreview && <div className="workspace-isolated-preview"><span role="status">{studio.patternPreview.status === 'loading' ? 'Loading pattern' : 'Playing pattern'} · {studio.patterns?.find(pattern => pattern.id === studio.patternPreview.id)?.name} · workspace paused</span><button type="button" onClick={studio.stopPatternPreview}>Stop isolated pattern</button></div>}
-    {studio.scenePreview && <div className="workspace-scene-preview"><span role="status">{studio.scenePreview.status === 'loading' ? 'Loading scene preview' : 'Playing scene preview'} · workspace paused</span><button type="button" onClick={studio.stopScene}>Stop scene preview</button></div>}
+    {isolated && <div className="workspace-isolated-preview"><span role="status">{isolated.title} · mix paused</span><div className="preview-return-actions"><button type="button" onClick={studio.stopPreview}>Stop preview</button><button type="button" className="return-to-mix" disabled={studio.booting || studio.projectBusy || studio.importing || !studio.tracks.length} onClick={returnToMix}>Return to mix</button></div></div>}
     {studio.exportState?.active && <div className="workspace-export-progress"><span role="status">{studio.exportState.stage}</span><progress aria-label="Workspace export progress" max="1" value={studio.exportState.progress} /><button type="button" disabled={studio.exportState.canceling} onClick={studio.cancelExport}>{studio.exportState.canceling ? 'Canceling…' : 'Cancel export'}</button></div>}
     {studio.notice && <p className="workspace-notice" role="status">{studio.notice}</p>}
   </section>;
